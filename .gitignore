@@ -1,0 +1,5 @@
+/goomba
+*.test
+*.out
+/tmp/
+testdata/fuzz/**/corpus-cache/
