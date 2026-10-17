@@ -57,12 +57,18 @@ func octal(field []byte, v int64) {
 }
 
 // header writes one header. magic selects "ustar\x0000" (true) or a
-// pre-POSIX header without magic (false).
+// pre-POSIX header without magic (false). A name or link target longer than
+// the 100-byte field is carried in a preceding GNU long-name ('L') or
+// long-link ('K') entry, as GNU tar writes it, so tests may use absolute
+// temp paths of any length.
 func (t *rawTar) header(typ byte, name, link string, mode, size, mtime int64, magic bool) {
-	var h [512]byte
-	if len(name) > 100 || len(link) > 100 {
-		panic("rawTar: name too long: " + name)
+	if len(link) > 100 {
+		t.longEntry(tar.TypeGNULongLink, link)
 	}
+	if len(name) > 100 {
+		t.longEntry(tar.TypeGNULongName, name)
+	}
+	var h [512]byte
 	copy(h[0:100], name)
 	octal(h[100:108], mode)
 	octal(h[108:116], 0)
@@ -83,6 +89,12 @@ func (t *rawTar) header(typ byte, name, link string, mode, size, mtime int64, ma
 	copy(h[148:155], fmt.Sprintf("%06o\x00", sum))
 	h[155] = ' '
 	t.buf.Write(h[:])
+}
+
+// longEntry writes a GNU 'L' or 'K' pseudo-entry holding s, NUL-terminated.
+func (t *rawTar) longEntry(typ byte, s string) {
+	t.header(typ, "././@LongLink", "", 0o644, int64(len(s)+1), rawMtime, true)
+	t.data(append([]byte(s), 0))
 }
 
 func (t *rawTar) data(b []byte) {
