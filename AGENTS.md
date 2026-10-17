@@ -104,6 +104,20 @@ inside your working tree, and always with `MAMBA_ROOT_PREFIX` set explicitly
   conda.anaconda.org.
 - Every parser gets a Go fuzz target (`FuzzXxx`) seeded from your test cases.
 
+## Resource limits
+
+The machine is shared with other agents. Run every probe, stress test,
+benchmark and differential run you write under a hard address-space cap in
+the same shell, one heavy run at a time:
+
+    ( ulimit -v 16000000; GOTOOLCHAIN=local go test -run TestMyProbe ./yourpkg )
+
+The race detector cannot run under `ulimit -v`, so use `-race` only for the
+committed suite (`scripts/gate.sh`). An unbounded probe once grew to 119 GB
+and was killed by the kernel; a watchdog kills any test binary above 24 GB.
+If a test needs more than a few GB, that is itself a finding: measure the
+growth curve on small inputs instead of running the big one.
+
 ## Gates (all must pass before you report done)
 
 1. `scripts/gate.sh ./yourpkg/...` — build, vet, `go test -race`, gofmt, and
