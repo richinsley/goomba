@@ -2,6 +2,7 @@ package spec
 
 import (
 	"errors"
+	"math/rand"
 	"reflect"
 	"strings"
 	"testing"
@@ -157,7 +158,10 @@ func TestParseMatchSpec(t *testing.T) {
 		{
 			in:   "xtensor[url=file:///srv/downloads/xtensor-0.21.4-hc9558a2_0.tar.bz2]",
 			name: "xtensor", channel: "file:///srv/downloads/xtensor-0.21.4-hc9558a2_0.tar.bz2",
-			str: "file:///srv/downloads/xtensor-0.21.4-hc9558a2_0.tar.bz2",
+			// libmamba prints the bare URL, which reads back with the file
+			// name's version and build pinned; goomba's text form is
+			// lossless, so the open version stays in brackets.
+			str: `xtensor[url="file:///srv/downloads/xtensor-0.21.4-hc9558a2_0.tar.bz2"]`,
 		},
 		{in: "foo=1.0=2", name: "foo", version: "=1.0", build: "2", condaBuild: "foo 1.0.* 2", str: "foo=1.0=2"},
 		{in: "foo   =    1.0    =    2", name: "foo", version: "=1.0", build: "2", condaBuild: "foo 1.0.* 2", str: "foo=1.0=2"},
@@ -684,5 +688,68 @@ func TestMatchSpecCredentials(t *testing.T) {
 	}
 	if _, err := ParseMatchSpec("file:///srv/t/chan::foo"); err != nil {
 		t.Errorf("file URL with a t directory: %v", err)
+	}
+}
+
+// TestMatchSpecStringLossless checks that String round-trips every field,
+// in particular for package URL specs (from the WP7 review, which found
+// distinct specs sharing one String: a subdir= next to url= was dropped,
+// and a URL spec with an open version printed as the bare URL).
+func TestMatchSpecStringLossless(t *testing.T) {
+	const u = "https://conda.anaconda.org/x/linux-64/foo-1.0-0.conda"
+	for _, c := range []struct{ in, str string }{
+		{u, u},
+		{u + "#" + strings.Repeat("a", 32), u + "#" + strings.Repeat("a", 32)},
+		{"foo==1.0=0[url=" + u + "]", u},
+		{"foo[url=" + u + "]", `foo[url="` + u + `"]`},
+		{"foo[url=" + u + ",subdir=osx-64]", `foo[url="` + u + `",subdir="osx-64"]`},
+		{"foo[subdir=osx-64,url=" + u + "]", `foo[url="` + u + `",subdir="osx-64"]`},
+		{"foo[url=" + u + ",subdir=linux-64]", `foo[url="` + u + `"]`},
+		{"ns:foo[url=" + u + "]", `ns:foo[url="` + u + `"]`},
+		{"*[url=" + u + "]", `*[url="` + u + `"]`},
+		{"bar[url=" + u + "]", `bar[url="` + u + `"]`},
+		{"foo==1.0[url=" + u + "]", `foo==1.0[url="` + u + `"]`},
+		{"foo[url=" + u + ",sha256=" + strings.Repeat("b", 64) + "]", `foo[url="` + u + `",sha256=` + strings.Repeat("b", 64) + `]`},
+	} {
+		m, err := ParseMatchSpec(c.in)
+		if err != nil {
+			t.Fatalf("%q: %v", c.in, err)
+		}
+		if got := m.String(); got != c.str {
+			t.Errorf("ParseMatchSpec(%q).String() = %q, want %q", c.in, got, c.str)
+		}
+		m2, err := ParseMatchSpec(m.String())
+		if err != nil || !m2.Equal(m) {
+			t.Errorf("%q: %q reparses to %+v (%v), want %+v", c.in, m.String(), m2, err, m)
+		}
+	}
+
+	// The reviewer's search: random bracket specs never lose a field.
+	attrs := []string{"version='>=1'", "version='1.0'", "build=0", "build='py*'", "build_number=2", "subdir=osx-64",
+		"subdir='linux-64,osx-64'", "channel=x/osx-64", "version='==1.0'", "version='1.0.*'", "build_number='>=2'",
+		"md5=" + strings.Repeat("A", 32), "subdir=linux-64", "channel=x", "channel=conda-forge", "fn=foo-1.0-0.conda",
+		"md5=" + strings.Repeat("a", 32), "sha256=" + strings.Repeat("c", 64), "license=MIT", "license_family=BSD",
+		"features=mkl", "track_features=tf", "optional", "name=bar", "target=x", "url=" + u,
+		"url=https://conda.anaconda.org/x/foo-1.0-0.tar.bz2", "url=" + u + "[osx-64]"}
+	prefixes := []string{"foo", "x::foo", "x/linux-64::foo", "conda-forge::foo", "x[osx-64]::foo", "foo 1.0", "foo 1.0 0",
+		"foo=1.0=0", "foo >=1", "x:ns:foo", "x/osx-64::foo", "foo[subdir=osx-64]", "foo 1.0.*", "foo==1.0", "ns:foo", u}
+	rng := rand.New(rand.NewSource(1))
+	for i := 0; i < 20000; i++ {
+		s := prefixes[rng.Intn(len(prefixes))]
+		if n := rng.Intn(4); n > 0 && s != u {
+			var parts []string
+			for j := 0; j < n; j++ {
+				parts = append(parts, attrs[rng.Intn(len(attrs))])
+			}
+			s += "[" + strings.Join(parts, ",") + "]"
+		}
+		m, err := ParseMatchSpec(s)
+		if err != nil {
+			continue
+		}
+		m2, err := ParseMatchSpec(m.String())
+		if err != nil || !m2.Equal(m) {
+			t.Fatalf("%q prints as %q, which reparses to %+v (%v); want %+v", s, m.String(), m2, err, m)
+		}
 	}
 }

@@ -72,8 +72,11 @@ type Options struct {
 	// MaxConcurrency.
 	Concurrency int
 	// PythonMinor, e.g. "3.12", enables the python-minor prefilter: records
-	// whose depends constrain python to versions that exclude every 3.12.x
-	// release are dropped while loading. Empty disables the filter. The
+	// whose depends constrain python to versions that exclude every version
+	// of the series 3.12.* from 3.12.0a0 up (3.12, 3.12.5, and the
+	// pre-releases 3.12.0a1 ... 3.12.0rc1, but not development builds such
+	// as 3.12.0dev0) are dropped while loading, so "python <3.12.0a0" is
+	// filtered and "python <3.12" is not. Empty disables the filter. The
 	// filter is conservative: it only evaluates dependencies of the
 	// canonical form "python <version-spec> [<build>]", and one it cannot
 	// interpret keeps the record. It applies to ShardedChannel and

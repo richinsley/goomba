@@ -23,9 +23,12 @@ import (
 //     single spaces, with the name exactly "python". Every other form
 //     (operators attached to the name, extra spaces, channel prefixes,
 //     brackets, other capitalization) keeps the record.
-//   - The series S is every release X.Y[.anything >= 0]: X.Y, X.Y.0,
-//     X.Y.5, X.Y.5.post1, ... but not pre-releases of X.Y.0 such as
-//     X.Y.0rc1 (they sort below X.Y).
+//   - The series S is every version matching X.Y.* from X.Y.0a0 up: X.Y,
+//     X.Y.0, X.Y.5, X.Y.5.post1, and the pre-releases of X.Y.0 such as
+//     X.Y.0a1, X.Y.0b2 and X.Y.0rc1, which sort below X.Y. Its least
+//     element is X.Y.0a0, so conda-forge's usual "<X.Y.0a0" upper bound
+//     still excludes the whole series; development builds of X.Y.0
+//     (X.Y.0dev0), which sort below X.Y.0a0, are not part of it.
 //   - A conjunction can match S only if every term can; a disjunction if any
 //     alternative can. This over-approximates (">=X.Y.5,<X.Y.3" is kept),
 //     which only costs solver time.
@@ -93,8 +96,8 @@ func (p *pythonMinor) specPossible(vs string) bool {
 // Position of a version relative to the series S.
 const (
 	posBelow   = iota // below every element of S
-	posMinimum        // equal to X.Y, the least element of S
-	posInside         // an element of S above X.Y
+	posMinimum        // equal to X.Y.0a0, the least element of S
+	posInside         // above X.Y.0a0, and not above every element of S
 	posAbove          // above every element of S
 )
 
@@ -114,6 +117,12 @@ func (p *pythonMinor) termPossible(term string) (possible, understood bool) {
 	case strings.HasSuffix(vs, ".*"):
 		glob, vs = true, vs[:len(vs)-2]
 	case strings.HasSuffix(vs, "*"):
+		if vs != "*" && (op == "!=" || op == "==") {
+			// "!=3.11*" and "==3.11*" compare with the literal version
+			// "3.11*" in package spec and libmamba; only ".*" is a glob
+			// after these operators.
+			return false, false
+		}
 		glob, vs = true, vs[:len(vs)-1]
 	}
 	if glob && vs == "" && (op == "" || op == "==" || op == "=") {
@@ -132,7 +141,10 @@ func (p *pythonMinor) termPossible(term string) (possible, understood bool) {
 		if glob || op == "=" {
 			return pre, true // fuzzy: startswith
 		}
-		pos := p.position(v)
+		pos, ok := p.position(v)
+		if !ok {
+			return false, false
+		}
 		exact := pos == posMinimum || pos == posInside || p.sameMinor(v)
 		if op == "" {
 			return exact || pre, true // bare version: exact or fuzzy, whichever keeps more
@@ -151,7 +163,10 @@ func (p *pythonMinor) termPossible(term string) (possible, understood bool) {
 	if glob {
 		return false, false
 	}
-	pos := p.position(v)
+	pos, ok := p.position(v)
+	if !ok {
+		return false, false
+	}
 	switch op {
 	case ">=", ">", "~=": // ~=V implies >=V
 		return pos != posAbove, true
@@ -169,20 +184,52 @@ func (p *pythonMinor) sameMinor(v liteVersion) bool {
 		len(v[1]) >= 1 && v[1][0].num == p.minor
 }
 
-// position places v relative to the series.
-func (p *pythonMinor) position(v liteVersion) int {
-	if c := comparePart(v.part(0), []atom{{num: p.major}}); c != 0 {
-		return sign(c, posBelow, posAbove)
-	}
-	if c := comparePart(v.part(1), []atom{{num: p.minor}}); c != 0 {
-		return sign(c, posBelow, posAbove)
-	}
-	for i := 2; i < len(v); i++ {
-		if c := comparePart(v[i], nil); c != 0 {
-			return sign(c, posBelow, posInside)
+// position places v relative to the series, whose least element is
+// X.Y.0a0 and whose elements all start with X.Y. The first atom of a part
+// is compared by its number first, so a part whose number differs from the
+// series' decides the position whatever follows it ("4.dev0" is above
+// 3.11, "3.12a0" above every 3.11.z, "3.10rc1" below). ok is false when a
+// part has the series' number followed by letters ("3.11post1" may lie
+// inside the series as conda's startswith reads it, or above it).
+func (p *pythonMinor) position(v liteVersion) (pos int, ok bool) {
+	for i, want := range [2]uint64{p.major, p.minor} {
+		if i >= len(v) {
+			break
+		}
+		part := v[i]
+		if n := part[0].num; n != want {
+			return sign(cmpUint(n, want), posBelow, posAbove), true
+		}
+		if len(part) != 1 || part[0].lit != "" {
+			return 0, false
 		}
 	}
-	return posMinimum
+	if len(v) < 2 {
+		// "3" is X alone: below X.Y for Y > 0.
+		if c := comparePart(nil, []atom{{num: p.minor}}); c != 0 {
+			return sign(c, posBelow, posAbove), true
+		}
+	}
+	// The third part of X.Y.0a0, the least element of the series.
+	if c := comparePart(v.part(2), []atom{{num: 0, lit: "a"}, {num: 0}}); c != 0 {
+		return sign(c, posBelow, posInside), true
+	}
+	for i := 3; i < len(v); i++ {
+		if c := comparePart(v[i], nil); c != 0 {
+			return sign(c, posBelow, posInside), true
+		}
+	}
+	return posMinimum, true
+}
+
+func cmpUint(a, b uint64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
 }
 
 func sign(c, neg, pos int) int {

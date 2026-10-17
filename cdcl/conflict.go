@@ -18,17 +18,20 @@ type Conflict struct {
 	// clauses are the clauses involved in the conflict, without
 	// duplicates, in the order they were found.
 	clauses []clauseID
-	solver  *Solver
-	state   *solverState
+	// inClauses holds the members of clauses, so adding one is O(1).
+	inClauses bitSet
+	solver    *Solver
+	state     *solverState
 }
 
+// addClause appends id to the conflict's clauses unless it is already
+// there. A conflict can involve hundreds of thousands of clauses (one per
+// candidate of a large package), so membership is a set lookup rather
+// than a scan.
 func (c *Conflict) addClause(id clauseID) {
-	for _, x := range c.clauses {
-		if x == id {
-			return
-		}
+	if c.inClauses.insert(uint32(id)) {
+		c.clauses = append(c.clauses, id)
 	}
-	c.clauses = append(c.clauses, id)
 }
 
 // Error returns the user-friendly explanation (see Display, which bounds

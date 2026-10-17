@@ -623,9 +623,9 @@ func (p *msParser) finish() error {
 // Subdir when the parent directory is a known platform.
 func (p *msParser) setPackage(location string) error {
 	p.ms.URL = location
-	dir, base := "", location
+	base := location
 	if i := strings.LastIndexByte(location, '/'); i >= 0 {
-		dir, base = location[:i], location[i+1:]
+		base = location[i+1:]
 	}
 	if dec, err := url.PathUnescape(base); err == nil {
 		base = dec
@@ -636,13 +636,24 @@ func (p *msParser) setPackage(location string) error {
 		return p.errorf(msg, err)
 	}
 	p.ms.Fn = base
-	p.ms.Channel, p.ms.Subdir = dir, ""
+	p.ms.Channel, p.ms.Subdir = packageChannelSubdir(location)
+	return nil
+}
+
+// packageChannelSubdir returns the channel and subdir a package URL or path
+// implies: its directory, split off its last component when that is a
+// known platform.
+func packageChannelSubdir(location string) (channel, subdir string) {
+	dir := ""
+	if i := strings.LastIndexByte(location, '/'); i >= 0 {
+		dir = location[:i]
+	}
 	if i := strings.LastIndexByte(dir, '/'); i >= 0 {
 		if plat, ok := ParsePlatform(dir[i+1:]); ok {
-			p.ms.Channel, p.ms.Subdir = dir[:i], plat
+			return dir[:i], plat
 		}
 	}
-	return nil
+	return dir, ""
 }
 
 // parsePackageFilename splits an archive file name such as
@@ -967,10 +978,11 @@ func quoteValue(v string) string {
 	return `"` + v + `"`
 }
 
-// urlOnly reports whether m is a package URL spec carrying nothing beyond
-// what the URL and an MD5 imply, so that String can print just the URL:
-// its name, version and build are either unconstrained or those of the
-// file name.
+// urlOnly reports whether m is exactly what parsing its package URL (and
+// an MD5 after '#') gives, so that String can print just "url" or
+// "url#md5": the name, version and build of the file name, the subdir the
+// URL implies, and nothing else. A spec that leaves the version or build
+// open, as "xtensor[url=...]" does, is not: the bare URL would pin them.
 func (m MatchSpec) urlOnly() bool {
 	if m.URL == "" || m.SHA256 != "" || !m.BuildNumber.IsAny() ||
 		m.License != "" || m.LicenseFamily != "" || m.Features != "" ||
@@ -981,19 +993,23 @@ func (m MatchSpec) urlOnly() bool {
 	if msg != "" || err != nil {
 		return false
 	}
-	return (m.Name.IsAny() || m.Name == NewGlobSpec(asciiLower(name))) &&
-		(m.Version.IsAny() || m.Version.Equal(v)) &&
-		(m.Build.IsAny() || m.Build.Equal(b))
+	_, subdir := packageChannelSubdir(m.URL)
+	return m.Name == NewGlobSpec(asciiLower(name)) &&
+		m.Version.Equal(v) && m.Build.Equal(b) && m.Subdir == subdir
 }
 
-// String returns the canonical form of m; parsing it yields an equal
-// MatchSpec. Simple specs print as "name", "name==1.2", "name=1.2=bld" or
-// "conda-forge::name>=1.2"; other fields go into a bracket section such as
-// `name[version=">=1.2,<2",build="py*",md5=...]`. Package URL specs print
-// as "url" or "url#md5", as in libmamba; parsing that form also pins the
-// name, version and build given by the file name, so
-// "xtensor[url=.../xtensor-0.21.4-hc9558a2_0.tar.bz2]" reparses to a
-// stricter spec that matches the same file.
+// String returns the canonical form of m: for every MatchSpec returned by
+// ParseMatchSpec, parsing the result yields a MatchSpec equal to m in every
+// field (MatchSpec.Equal). Simple specs print as "name", "name==1.2",
+// "name=1.2=bld" or "conda-forge::name>=1.2"; other fields go into a
+// bracket section such as `name[version=">=1.2,<2",build="py*",md5=...]`.
+// A package URL spec prints as "url" or "url#md5", as in libmamba, when
+// that is exactly what it says (see urlOnly); otherwise in brackets, e.g.
+// `xtensor[url="https://.../xtensor-0.21.4-hc9558a2_0.tar.bz2"]`, with a
+// subdir= key when its subdir differs from the one the URL implies and a
+// "namespace:" prefix when it has a namespace. (A MatchSpec built by hand
+// with a URL whose directory names a platform but an empty Subdir has no
+// text form; String prints it with the URL's subdir.)
 func (m MatchSpec) String() string {
 	s := m.format(false)
 	if hasArchiveExtension(s) {
@@ -1015,17 +1031,20 @@ func (m MatchSpec) format(inBrackets bool) string {
 		}
 		return b.String()
 	}
-	if m.URL == "" {
-		switch {
-		case m.Channel != "":
-			b.WriteString(m.Channel)
-			if m.Subdir != "" {
-				b.WriteString("[" + m.Subdir + "]")
-			}
-			b.WriteString(":" + m.Namespace + ":")
-		case m.Namespace != "":
+	switch {
+	case m.URL != "":
+		// The channel comes from the URL.
+		if m.Namespace != "" {
 			b.WriteString(m.Namespace + ":")
 		}
+	case m.Channel != "":
+		b.WriteString(m.Channel)
+		if m.Subdir != "" {
+			b.WriteString("[" + m.Subdir + "]")
+		}
+		b.WriteString(":" + m.Namespace + ":")
+	case m.Namespace != "":
+		b.WriteString(m.Namespace + ":")
 	}
 	b.WriteString(m.Name.String())
 
@@ -1069,6 +1088,9 @@ func (m MatchSpec) format(inBrackets bool) string {
 	}
 	if m.URL != "" {
 		attr("url=" + quoteValue(m.URL))
+		if _, subdir := packageChannelSubdir(m.URL); m.Subdir != subdir && m.Subdir != "" {
+			attr("subdir=" + quoteValue(m.Subdir))
+		}
 	} else if m.Channel == "" && m.Subdir != "" {
 		attr("subdir=" + quoteValue(m.Subdir))
 	}

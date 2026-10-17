@@ -31,7 +31,10 @@ func TestMatchesPythonMinorUpstream(t *testing.T) {
 		{"python >=3.12", "3.12", true},
 		// python version range does not match requested minor
 		{"python >=3.12,<3.13", "3.11", false},
-		{"python >=3.12,<3.13", "3.13", false},
+		// libmamba: false. 3.13.0rc1 is in goomba's 3.13 series and
+		// satisfies "<3.13"; conda-forge's "<3.13.0a0" is still filtered.
+		{"python >=3.12,<3.13", "3.13", true},
+		{"python >=3.12,<3.13.0a0", "3.13", false},
 		// exact three-token conda pin matches requested minor
 		{"python 3.7.12 0_73_pypy", "3.7", true},
 		// two-token exact pin matches requested minor
@@ -79,8 +82,38 @@ func TestMatchesPythonMinor(t *testing.T) {
 		{"python >=2.7,!=3.0.*,!=3.1.*,!=3.2.*", "3.1", false},
 		{"python !=3.12.*", "3.12", false},
 		{"python !=3.12", "3.12", true},
-		{"python <3.12", "3.12", false},
+		{"python <3.12", "3.12", true}, // 3.12.0rc1 < 3.12 is in the series
 		{"python <3.12.0a0", "3.12", false},
+		// The series includes the pre-releases of X.Y.0 from X.Y.0a0 up
+		// (WP7 review: python=3.12 with a channel holding only 3.12.0rc1).
+		{"python >=3.8,<3.12", "3.12", true},
+		{"python >=3.10,<3.12.0a0", "3.12", false},
+		{"python <3.12.0a1", "3.12", true},
+		{"python <3.12.0rc1", "3.12", true},
+		{"python <=3.12.0a0", "3.12", true},
+		{"python <3.12.0dev0", "3.12", false}, // dev builds sort below X.Y.0a0
+		{"python <3.12.0b1,>=3.12.0a0", "3.12", true},
+		{"python 3.12.0rc1", "3.12", true},
+		{"python ==3.12.0a2", "3.12", true},
+		{"python >3.12.0dev0", "3.12", true},
+		// "!=V*" and "==V*" (no dot) compare with the literal version "V*"
+		// in package spec and libmamba: not understood, kept (WP7 review).
+		{"python !=3.12*", "3.12", true},
+		{"python ==3.12*", "3.12", true},
+		{"python !=3.12.*", "3.12", false},
+		{"python 3.12*", "3.12", true},
+		{"python 3.13*", "3.12", false},
+		// A part whose number differs decides, whatever letters follow.
+		{"python <4.dev0", "3.12", true},
+		{"python >=4.dev0", "3.12", false},
+		{"python <3.13a0", "3.12", true},
+		{"python >3.13a0", "3.12", false},
+		{"python >=3.13a0", "3.12", false},
+		{"python <3.11rc1", "3.12", false},
+		{"python <=3.11rc1", "3.12", false},
+		{"python >3.11rc1", "3.12", true},
+		{"python <2a", "3.12", false},
+		{"python >=3.12post1", "3.12", true}, // not understood: same number, then letters
 		{"python <3.12.1", "3.12", true},
 		{"python <=3.12", "3.12", true},
 		{"python <=3.11.99", "3.12", false},
@@ -96,11 +129,12 @@ func TestMatchesPythonMinor(t *testing.T) {
 		{"python 3", "3.12", true}, // bare: exact 3 or fuzzy 3.*, whichever keeps more
 		{"python 3", "2.7", false},
 		{"python 3.12", "3.12", true},
-		{"python >=3.8,<3.10", "3.10", false},
+		{"python >=3.8,<3.10", "3.10", true}, // 3.10.0rc1
+		{"python >=3.8,<3.10.0a0", "3.10", false},
 		{"python>=3.12.1", "3.12", true},          // libmamba drops this; X.Y.5 satisfies it
 		{"python >=3.12.5,<3.12.3", "3.12", true}, // conservative: terms are checked one by one
 		{"python 3.12.0post1", "3.12", true},
-		{"python >3.12post1", "3.12", false}, // 3.12post1 sorts above every 3.12.x
+		{"python >3.12post1", "3.12", true}, // not understood: 3.12post2 starts with 3.12
 		{"python <3.12post1", "3.12", true},
 		{"python <3", "3.12", false},
 		{"python * *_cpython", "3.12", true},
@@ -216,7 +250,11 @@ func TestShardPythonMinorPrefilter(t *testing.T) {
 		py        *pythonMinor
 		want      int
 	}{
-		{"mismatching python minor is discarded before record creation", "python >=3.11,<3.12", minor(t, "3.12"), 0},
+		// libmamba discards "python >=3.11,<3.12" for 3.12; goomba keeps it,
+		// because 3.12.0rc1 satisfies it, and discards conda-forge's
+		// "<3.12.0a0" form.
+		{"mismatching python minor is discarded before record creation", "python >=3.11,<3.12.0a0", minor(t, "3.12"), 0},
+		{"a pre-release of the minor satisfies a bound below it", "python >=3.11,<3.12", minor(t, "3.12"), 1},
 		{"matching python minor is retained", "python >=3.12,<3.13", minor(t, "3.12"), 1},
 		{"no python minor context does not apply prefilter", "python >=3.11,<3.12", nil, 1},
 		{"exact python pin matches requested minor (conda three-token depends)", "python 3.7.12 0_73_pypy", minor(t, "3.7"), 1},

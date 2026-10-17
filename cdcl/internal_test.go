@@ -416,3 +416,25 @@ func TestRecoveredError(t *testing.T) {
 		_ = recoveredError(internalError("broken"), true)
 	}()
 }
+
+// TestConflictAddClause checks that a conflict keeps its clauses in the
+// order they were found, without duplicates, and that adding is O(1): a
+// million additions would take minutes with a linear scan per addition.
+func TestConflictAddClause(t *testing.T) {
+	var c Conflict
+	for _, id := range []clauseID{5, 3, 5, 9, 3, 0, 9, 1} {
+		c.addClause(id)
+	}
+	if got, want := fmt.Sprint(c.clauses), "[5 3 9 0 1]"; got != want {
+		t.Fatalf("clauses %s, want %s", got, want)
+	}
+	var big Conflict
+	const n = 1 << 20
+	for i := 0; i < n; i++ {
+		big.addClause(clauseID(n - 1 - i))
+		big.addClause(clauseID(n - 1 - i/2))
+	}
+	if len(big.clauses) != n || big.clauses[0] != n-1 || big.clauses[n-1] != 0 {
+		t.Fatalf("%d clauses, first %d, last %d", len(big.clauses), big.clauses[0], big.clauses[len(big.clauses)-1])
+	}
+}

@@ -214,14 +214,8 @@ func FuzzParseMatchSpec(f *testing.F) {
 		}
 		_ = m.CondaBuildForm()
 		_, _ = m.ChannelURL(DefaultChannelAlias)
-		if m.urlOnly() {
-			// A package URL prints as the URL, which also pins the name,
-			// version and build of its file name.
-			if m2.URL != m.URL || m2.MD5 != m.MD5 || m2.Fn != m.Fn {
-				t.Fatalf("ParseMatchSpec(%q) = %q reparses to %+v", s, str, m2)
-			}
-			return
-		}
+		// The text form is lossless: every field survives the round trip,
+		// package URL specs included.
 		if !m2.Equal(m) {
 			t.Fatalf("ParseMatchSpec(%q) = %q reparses to a different spec: %+v vs %+v", s, str, m, m2)
 		}

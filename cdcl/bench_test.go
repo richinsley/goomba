@@ -78,3 +78,29 @@ func TestSyntheticProblemSolves(t *testing.T) {
 	}
 	t.Logf("%d solvables interned, %d selected, %d clauses", p.Pool.SolvableCount(), len(sol), solver.ClauseCount())
 }
+
+// BenchmarkUnsatManyCandidates explains a conflict involving one clause
+// per candidate: n versions of a package, each depending on a package
+// that does not exist, with dependencies hinted as cheap (as package solve
+// does), so every candidate is ruled out up front and the conflict
+// collects n clauses. The time grows about linearly with n.
+func BenchmarkUnsatManyCandidates(b *testing.B) {
+	for _, n := range []int{25000, 100000, 400000} {
+		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				p := bundlebox.New()
+				p.HintDependenciesAvailable = true
+				for v := 0; v < n; v++ {
+					p.AddPackage("a", bundlebox.NewPack(uint32(v)), []string{"missing"}, nil)
+				}
+				reqs := p.Requirements([]string{"a"})
+				solver := cdcl.NewSolver(p)
+				b.StartTimer()
+				if _, err := solver.Solve(context.Background(), cdcl.Problem{Requirements: reqs}); err == nil {
+					b.Fatal("solved")
+				}
+			}
+		})
+	}
+}
