@@ -1,0 +1,9 @@
+Output of NVIDIA's nvidia-smi (driver 580, CUDA 13.0) on a multi-GPU Linux
+machine whose GPUs have compute capabilities 12.0, 8.6 and 7.5, run with an
+empty environment:
+
+  query-unit.xml   nvidia-smi --query -u -x
+  compute-cap.csv  nvidia-smi --query-gpu=compute_cap --format=csv,noheader
+
+The capture time in query-unit.xml is replaced by the Unix epoch. Neither
+file holds serial numbers, UUIDs, PCI addresses or host names.

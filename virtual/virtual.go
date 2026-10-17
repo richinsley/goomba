@@ -29,6 +29,9 @@ var (
 	// ErrNotVirtual reports a nil, duplicate or non-virtual record passed to
 	// ApplyOverrides.
 	ErrNotVirtual = errors.New("not a virtual package record")
+	// ErrInvalidOption reports an unusable Options.NvidiaSMI: a relative
+	// path, or, on Linux and Windows, a path that is not a regular file.
+	ErrInvalidOption = errors.New("invalid option")
 )
 
 // Options configures Detect. The zero value detects the host platform with
@@ -45,12 +48,27 @@ type Options struct {
 	// package the platform lacks adds it (e.g. "__cuda": "12.4"). The value
 	// for "__archspec" is the microarchitecture, i.e. the build string
 	// ("x86_64_v3"), as in conda; archspec names are lower-case, so the value
-	// is lower-cased ("X86_64_V3" means "x86_64_v3"). Other values are used
-	// as given. Overrides for packages that cannot exist
-	// on the platform (__linux and __glibc off Linux, __osx off macOS, __win
-	// off Windows, __unix on Windows) are ignored, as libmamba does, so one
-	// override map can serve several platforms.
+	// is lower-cased ("X86_64_V3" means "x86_64_v3"). The value for
+	// "__cuda_arch" is a compute capability, exactly major.minor with digits
+	// only ("8.6"), as in rattler; like a detected one, it is dropped when
+	// there is no __cuda (detected or overridden), and "__cuda": "" with a
+	// non-empty "__cuda_arch" is an error. Other values are used as given.
+	// Overrides for packages that cannot exist on the platform (__linux and
+	// __glibc off Linux, __osx off macOS, __win off Windows, __unix on
+	// Windows) are ignored, as libmamba does, so one override map can serve
+	// several platforms.
 	Overrides map[string]string
+	// NvidiaSMI is the absolute path of the nvidia-smi program Detect runs
+	// to find __cuda and __cuda_arch on Linux and Windows, for callers that
+	// know where it is (a command-line flag, say). When set, Detect runs
+	// only this file, as given, without the ownership checks it applies to
+	// the system locations; on Windows its name must end in ".exe". "" means
+	// the fixed system locations listed in the package documentation; goomba
+	// never searches PATH. A relative path is an ErrInvalidOption error on
+	// every platform, and on Linux and Windows so is a path that is not a
+	// regular file, even when overrides make the run unnecessary. On other
+	// platforms the path is otherwise ignored.
+	NvidiaSMI string
 }
 
 // probe supplies host facts to detect. hostProbe is the real one; tests use
@@ -62,6 +80,13 @@ type probe interface {
 	osxVersion() (string, bool)
 	winVersion() (string, bool)
 	archspec() string
+	// findNvidiaSMI returns the nvidia-smi to run: explicit when it is set
+	// and a regular file, otherwise the first trusted system location.
+	findNvidiaSMI(explicit string) (program, bool)
+	// runNvidiaSMI runs prog with args and returns its stdout, or false if
+	// it could not be run to completion within the limits (a non-zero exit
+	// status still returns the output).
+	runNvidiaSMI(ctx context.Context, prog program, args ...string) ([]byte, bool)
 }
 
 // Detect returns the virtual packages of this machine for opt.Platform
@@ -70,13 +95,42 @@ type probe interface {
 // On Linux it reports __unix, __linux (the numeric part of the kernel
 // release, "0" if that cannot be read), __glibc (absent on musl and other
 // non-glibc systems) and __archspec; on macOS __unix, __osx and __archspec;
-// on Windows __win and __archspec. __cuda appears only when Overrides sets
-// it. __archspec has version "1" and the microarchitecture as its build
-// string: the x86-64 level (x86_64 to x86_64_v4) on amd64 and the platform's
-// architecture (aarch64, arm64, ppc64le, ...) elsewhere, as in libmamba.
+// on Windows __win and __archspec. __archspec has version "1" and the
+// microarchitecture as its build string: the x86-64 level (x86_64 to
+// x86_64_v4) on amd64 and the platform's architecture (aarch64, arm64,
+// ppc64le, ...) elsewhere, as in libmamba.
 //
-// Detect reads files and may run getconf; it returns ctx.Err() if ctx is
-// cancelled.
+// On Linux and Windows, Detect also reports the NVIDIA GPUs, from nvidia-smi
+// as conda and rattler do, both with build "0":
+//   - __cuda: the highest CUDA version the installed driver supports
+//     (`nvidia-smi --query -u -x`), as major.minor. This is the driver's
+//     version, not the toolkit's: micromamba reports the toolkit version
+//     from /usr/local/cuda/version.json when that file exists, so on such a
+//     machine goomba and micromamba can disagree.
+//   - __cuda_arch: the lowest compute capability among the GPUs
+//     (`nvidia-smi --query-gpu=compute_cap --format=csv,noheader`), as
+//     major.minor without sub-architecture letters. It is reported only
+//     together with __cuda.
+//
+// Missing, unparsable or out-of-range nvidia-smi output leaves the package
+// out; it is never an error. An overridden package is not probed, and
+// nvidia-smi is not run when neither package needs probing: removing
+// __cuda ("__cuda": "") also removes the detected __cuda_arch. On other
+// platforms the two appear only through Overrides.
+//
+// nvidia-smi is Options.NvidiaSMI when that is set, or else the first
+// usable one of a few fixed system locations; the package documentation
+// lists them, the checks a location must pass, and when to set
+// Options.NvidiaSMI instead.
+//
+// Detect reads files and may run getconf and nvidia-smi; it returns
+// ctx.Err() as soon as ctx is cancelled, leaving goroutines to reap a
+// program it killed. Each program gets at most 10 seconds (5 for getconf).
+// A program that cannot be killed, such as an nvidia-smi in uninterruptible
+// sleep on a GPU that fell off the bus, is abandoned about two seconds
+// after its timeout, and Detect returns; two goroutines (one waiting for
+// the process, and os/exec's context watcher) then stay blocked until the
+// process finally exits.
 func Detect(ctx context.Context, opt Options) ([]*record.PackageRecord, error) {
 	return detect(ctx, opt, hostProbe{})
 }
@@ -103,6 +157,18 @@ func detect(ctx context.Context, opt Options, p probe) ([]*record.PackageRecord,
 	os, _, ok := splitPlatform(platform)
 	if !ok {
 		return nil, fmt.Errorf("virtual: detect %q: %w", platform, ErrInvalidPlatform)
+	}
+	if opt.NvidiaSMI != "" {
+		if err := checkNvidiaSMIPath(os, opt.NvidiaSMI); err != nil {
+			return nil, fmt.Errorf("virtual: detect: NvidiaSMI %q: %w: %v", opt.NvidiaSMI, ErrInvalidOption, err)
+		}
+		// Checked whether or not nvidia-smi will run, so that a mistyped
+		// path never quietly means "no GPU".
+		if probesCUDA(os) {
+			if _, ok := p.findNvidiaSMI(opt.NvidiaSMI); !ok {
+				return nil, fmt.Errorf("virtual: detect: NvidiaSMI %q: %w: not a regular file", opt.NvidiaSMI, ErrInvalidOption)
+			}
+		}
 	}
 
 	var recs []*record.PackageRecord
@@ -149,6 +215,9 @@ func detect(ctx context.Context, opt Options, p probe) ([]*record.PackageRecord,
 		}
 		add("__archspec", "1", build)
 	}
+	if probesCUDA(os) {
+		detectCUDA(ctx, p, opt.NvidiaSMI, ov, add)
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -193,7 +262,8 @@ const (
 //     built here matches one built on the target: x86_64 (never a v2-v4
 //     level), x86, aarch64, arm64, ppc64le, s390x, wasm32, ...
 //
-// __cuda is never included: no platform is assumed to have a GPU. Defaults
+// __cuda and __cuda_arch are never included: no platform is assumed to
+// have a GPU. Defaults
 // returns nil for "noarch" and for strings that are not of the form os-arch
 // with lower-case letters, digits and '_' on each side.
 func Defaults(platform string) []*record.PackageRecord {
@@ -243,7 +313,8 @@ func isPlatformWord(s string) bool {
 // Detect applies Options.Overrides for platform, sorted by name. recs must
 // hold only virtual package records (names starting with "__"), one per
 // name; a nil, non-virtual or duplicate record is an ErrNotVirtual error.
-// recs is not modified.
+// recs is not modified. As in Detect, a __cuda_arch is dropped when the
+// result has no __cuda.
 //
 // Two uses:
 //   - ApplyOverrides(p, Defaults(p), userOverrides) locks for another
@@ -279,9 +350,10 @@ func ApplyOverrides(platform string, recs []*record.PackageRecord, overrides map
 // CheckRecorded reports whether m is a valid recorded set of virtual
 // packages for platform, the form ToOverrides produces and lockfiles store:
 // every key a full lower-case name ("__glibc", not "glibc"), every value a
-// non-empty version (for "__archspec", a lower-case build string), and every
-// package one the platform can carry (no __glibc on osx-64, no __unix on
-// win-64). For such an m, ApplyOverrides(platform, nil, m) reproduces the
+// non-empty version (for "__archspec", a lower-case build string; for
+// "__cuda_arch", major.minor), every package one the platform can carry (no
+// __glibc on osx-64, no __unix on win-64), and no __cuda_arch without
+// __cuda. For such an m, ApplyOverrides(platform, nil, m) reproduces the
 // recorded records exactly. Errors wrap ErrInvalidOverride (or
 // ErrInvalidPlatform) and name the first bad key in sorted order.
 func CheckRecorded(platform string, m map[string]string) error {
@@ -310,6 +382,11 @@ func CheckRecorded(platform string, m map[string]string) error {
 		}
 		if !appliesTo(k, os) {
 			return fmt.Errorf("virtual: recorded %q: %w: cannot exist on %q", k, ErrInvalidOverride, platform)
+		}
+	}
+	if _, ok := m["__cuda_arch"]; ok {
+		if _, ok := m["__cuda"]; !ok {
+			return fmt.Errorf("virtual: recorded %q without %q: %w", "__cuda_arch", "__cuda", ErrInvalidOverride)
 		}
 	}
 	return nil
@@ -384,11 +461,27 @@ func normalizeOverrides(ov map[string]string) (map[string]string, error) {
 		out[name] = v
 		from[name] = k
 	}
+	if cuda, ok := out["__cuda"]; ok && cuda == "" && out["__cuda_arch"] != "" {
+		return nil, fmt.Errorf("virtual: override %q=%q with %q=%q: %w: __cuda_arch needs __cuda",
+			from["__cuda_arch"], out["__cuda_arch"], from["__cuda"], cuda, ErrInvalidOverride)
+	}
 	return out, nil
 }
 
 func checkOverrideValue(name, v string) error {
-	if name != "__archspec" {
+	switch name {
+	case "__archspec":
+	case "__cuda_arch":
+		// rattler's CudaArch::parse_version: a compute capability is exactly
+		// major.minor; "86" would satisfy every __cuda_arch >=X.
+		if err := checkVersion(v); err != nil {
+			return err
+		}
+		if !isValidCudaVersionFormat(v) {
+			return errors.New("a compute capability is major.minor with digits only, e.g. 8.6")
+		}
+		return nil
+	default:
 		return checkVersion(v)
 	}
 	err := checkBuild(v)
@@ -450,6 +543,11 @@ func applyOverrides(platform string, recs []*record.PackageRecord, ov map[string
 		} else {
 			r.Version = v
 		}
+	}
+	// As in rattler (and the CEP that defines it), __cuda_arch exists only
+	// alongside __cuda.
+	if _, ok := byName["__cuda"]; !ok {
+		delete(byName, "__cuda_arch")
 	}
 	out := make([]*record.PackageRecord, 0, len(byName))
 	for _, n := range order {

@@ -19,6 +19,15 @@ type fakeProbe struct {
 	osx     string
 	win     string
 	arch    string // "" = derive from plat like libmamba
+
+	smi             string    // nvidia-smi at a system location; "" = none
+	explicitMissing bool      // a caller-chosen nvidia-smi is not a regular file
+	xml             string    // stdout of `nvidia-smi --query -u -x`
+	caps            string    // stdout of the compute_cap query
+	failXML         bool      // the --query run does not complete
+	failCaps        bool      // the compute_cap run does not complete
+	runs            *[]string // if set, records "path args..." of every run
+	onRun           func()    // if set, called on every run
 }
 
 func (f fakeProbe) platform() string { return f.plat }
@@ -34,6 +43,27 @@ func (f fakeProbe) archspec() string {
 	}
 	_, arch, _ := splitPlatform(f.plat)
 	return archspecForPlatform(arch)
+}
+func (f fakeProbe) findNvidiaSMI(explicit string) (program, bool) {
+	if explicit != "" {
+		return program{path: explicit, name: explicit}, !f.explicitMissing
+	}
+	return program{path: f.smi, name: f.smi}, f.smi != ""
+}
+func (f fakeProbe) runNvidiaSMI(ctx context.Context, prog program, args ...string) ([]byte, bool) {
+	if f.runs != nil {
+		*f.runs = append(*f.runs, strings.Join(append([]string{prog.path}, args...), " "))
+	}
+	if f.onRun != nil {
+		f.onRun()
+	}
+	switch strings.Join(args, " ") {
+	case "--query -u -x":
+		return []byte(f.xml), !f.failXML
+	case "--query-gpu=compute_cap --format=csv,noheader":
+		return []byte(f.caps), !f.failCaps
+	}
+	return nil, false
 }
 
 // triples renders records as sorted "name version build" strings.
@@ -228,8 +258,9 @@ func TestOverridesAddChangeRemove(t *testing.T) {
 	}{
 		{"add cuda", map[string]string{"cuda": "12.4"},
 			[]string{"__archspec 1 x86_64_v3", "__cuda 12.4 0", "__glibc 2.35 0", "__linux 6.8.0 0", "__unix 0 0"}},
-		{"add other", map[string]string{"__cuda_arch": "8.6"},
-			[]string{"__archspec 1 x86_64_v3", "__cuda_arch 8.6 0", "__glibc 2.35 0", "__linux 6.8.0 0", "__unix 0 0"}},
+		{"add cuda and cuda_arch", map[string]string{"cuda": "12.4", "__cuda_arch": "8.6"},
+			[]string{"__archspec 1 x86_64_v3", "__cuda 12.4 0", "__cuda_arch 8.6 0", "__glibc 2.35 0", "__linux 6.8.0 0", "__unix 0 0"}},
+		{"cuda_arch alone is dropped", map[string]string{"__cuda_arch": "8.6"}, plain},
 		{"change glibc", map[string]string{"__glibc": "2.17"},
 			[]string{"__archspec 1 x86_64_v3", "__glibc 2.17 0", "__linux 6.8.0 0", "__unix 0 0"}},
 		{"change archspec", map[string]string{"ARCHSPEC": "x86_64"},
@@ -653,7 +684,7 @@ func TestRecordedReplayIsExact(t *testing.T) {
 	sets := [][]*record.PackageRecord{
 		mustDetect(t, fakeProbe{plat: "osx-arm64", osx: "14.5"}, map[string]string{"cuda": "12.4"}),
 		mustDetect(t, fakeProbe{plat: "win-64", win: "10.0.26100", arch: "x86_64_v2"}, nil),
-		mustDetect(t, fakeProbe{plat: "linux-aarch64", release: "6.1"}, map[string]string{"cuda_arch": "8.6"}),
+		mustDetect(t, fakeProbe{plat: "linux-aarch64", release: "6.1"}, map[string]string{"cuda": "12.4", "cuda_arch": "8.6"}),
 	}
 	for _, p := range []string{
 		"linux-32", "linux-64", "linux-aarch64", "linux-armv6l", "linux-armv7l", "linux-loongarch64",

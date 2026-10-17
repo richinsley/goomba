@@ -1,0 +1,10 @@
+<?xml version="1.0" ?>
+<!DOCTYPE nvidia_smi_log SYSTEM "nvsmi_unit_v13.dtd">
+<nvidia_smi_log>
+	<timestamp>Thu Jan  1 00:00:00 1970</timestamp>
+	<driver_version>580.173.02</driver_version>
+	<cuda_version>13.0</cuda_version>
+	<hic_info>
+	</hic_info>
+	<attached_units>0</attached_units>
+</nvidia_smi_log>

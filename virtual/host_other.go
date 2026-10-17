@@ -19,3 +19,7 @@ func (hostProbe) osxVersion() (string, bool) { return "", false }
 func (hostProbe) winVersion() (string, bool) { return "", false }
 
 func (hostProbe) archspec() string { return hostArchspec() }
+
+func (hostProbe) findNvidiaSMI(string) (program, bool) { return program{}, false }
+
+func (hostProbe) runNvidiaSMI(context.Context, program, ...string) ([]byte, bool) { return nil, false }
