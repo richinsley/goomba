@@ -1,0 +1,117 @@
+{
+ "info": {
+  "type": "dir"
+ },
+ "info/about.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "c1fabd16959a902038b6d61d89d23aa0d7d815cae18f4892cdb9bfb7cc0b2367",
+  "mtime_ns": 1720077433228442700
+ },
+ "info/files": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "56ee275b7cedf44713a337417f65d918846ee5d841fdd2549d821b6159bf1816",
+  "mtime_ns": 1720077433236443000
+ },
+ "info/git": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "mtime_ns": 1720077433248443400
+ },
+ "info/hash_input.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "c1f3f7842dc0f0b9cf6143ddd7362b6331c59dd425b1805ee004c05a6321bfa4",
+  "mtime_ns": 1720077432972433800
+ },
+ "info/index.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "59a4e186d997715cb98a0178e4edb08410f67361ec6fc259815d67842f4c432f",
+  "mtime_ns": 1720077432972433800
+ },
+ "info/licenses": {
+  "type": "dir"
+ },
+ "info/licenses/LICENSE": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7",
+  "mtime_ns": 1720056920000000000
+ },
+ "info/paths.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "45007d49d071d0985373d1f3b6ee3ce719e65aa3821df1e8f1c52d3211be7add",
+  "mtime_ns": 1720077433248443400
+ },
+ "info/recipe": {
+  "type": "dir"
+ },
+ "info/recipe/bld.bat": {
+  "type": "file",
+  "mode": "0755",
+  "sha256": "bf79cda3c8736f383f5e53925d25f1d3f4be41aeb6cf76ba0283f405a33e09ff",
+  "mtime_ns": 1720077287319375000
+ },
+ "info/recipe/build.sh": {
+  "type": "file",
+  "mode": "0755",
+  "sha256": "8327db30fd0c8a5a52f8ac6fbd957f50eb1903d3d80bdbd019de00335be6b029",
+  "mtime_ns": 1720077287319375000
+ },
+ "info/recipe/conda_build_config.yaml": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "a2c6d130fd664ba549725a01aedf7c08597b87d0aaf3ee5ce6c15ddde1cc6482",
+  "mtime_ns": 1720077433236443000
+ },
+ "info/recipe/meta.yaml": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "cb48ed80015367d4c1b620c49f6e26306fa27436bdc4697f1330cdc7cab58212",
+  "mtime_ns": 1720077433232442900
+ },
+ "info/recipe/meta.yaml.template": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "d2f17360ede71e97a798af7f0a499380cdf45d71a806419b33c97e2c570f720f",
+  "mtime_ns": 1720077287319375000
+ },
+ "info/recipe/recipe-scripts-license.txt": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "86dc4bc79c9fa4d5dc3ae5558441d5bb8b8736403e70997cf9ae8f671ab5d0ca",
+  "mtime_ns": 1720077356709836200
+ },
+ "info/test": {
+  "type": "dir"
+ },
+ "info/test/run_test.sh": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "58019c0d5c8d5fd77b39957ded6b536f6d98bfb7e4f14fc717bc98d9894a093c",
+  "mtime_ns": 1720077433236443000
+ },
+ "info/test/test_time_dependencies.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "2efbaa751e0094826f0c3ffa9a95305def40f722273f557eb18f9c8644824f15",
+  "mtime_ns": 1720077433236443000
+ },
+ "ssl": {
+  "type": "dir"
+ },
+ "ssl/cacert.pem": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "488ba960602bf07cc63f4ef7aec108692fec41820fc3328a8e3f3de038149aee",
+  "mtime_ns": 1720077431252374600
+ },
+ "ssl/cert.pem": {
+  "type": "symlink",
+  "target": "cacert.pem"
+ }
+}

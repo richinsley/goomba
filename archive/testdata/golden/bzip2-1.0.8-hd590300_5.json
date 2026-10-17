@@ -1,0 +1,257 @@
+{
+ "bin": {
+  "type": "dir"
+ },
+ "bin/bunzip2": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "8ed2af80ad046e203fc48298ac371ce8839ab0c9b6794d6414e567f1349f140a",
+  "mtime_ns": 1699279927016786800
+ },
+ "bin/bzcat": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "8ed2af80ad046e203fc48298ac371ce8839ab0c9b6794d6414e567f1349f140a",
+  "mtime_ns": 1699279927008785700
+ },
+ "bin/bzcmp": {
+  "type": "symlink",
+  "target": "bzdiff"
+ },
+ "bin/bzdiff": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "1c1f96193cdf14b85ea65f140a7557a07ece8783a53ec5ba6b5c30644a9d3012",
+  "mtime_ns": 1699279924764542000
+ },
+ "bin/bzegrep": {
+  "type": "symlink",
+  "target": "bzgrep"
+ },
+ "bin/bzfgrep": {
+  "type": "symlink",
+  "target": "bzgrep"
+ },
+ "bin/bzgrep": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "a8e368a31766c7862b8d0feeffe274c3bb43b969e3ccb4f9e77d13bfa447a5c9",
+  "mtime_ns": 1699279924752540800
+ },
+ "bin/bzip2": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "8ed2af80ad046e203fc48298ac371ce8839ab0c9b6794d6414e567f1349f140a",
+  "mtime_ns": 1699279927024787700
+ },
+ "bin/bzip2recover": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "b8308aa457a0a1cac013d238b3e67207453b203e47caaf580426fb02b0a3a5a9",
+  "mtime_ns": 1699279927036789200
+ },
+ "bin/bzless": {
+  "type": "symlink",
+  "target": "bzmore"
+ },
+ "bin/bzmore": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "836536d4c7469788c730355d59f8ae8d16ba07cb0754174878d99ed90f04448d",
+  "mtime_ns": 1699279924756541300
+ },
+ "include": {
+  "type": "dir"
+ },
+ "include/bzlib.h": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "6ac62e811669598ee30c9e1c379b9e627f6ff17a5a3dc1e0b4fa8b8ea75e580d",
+  "mtime_ns": 1699279924744540200
+ },
+ "info": {
+  "type": "dir"
+ },
+ "info/about.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "2e7f980ba9083e6ed421422de458313574d37f6cb87a67c95d65c4cf555dc2ec",
+  "mtime_ns": 1699279927420837000
+ },
+ "info/files": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "82f402c298b72aebe6d4f20b0eb5a291085120517934bb9f70dc6e8840a0b943",
+  "mtime_ns": 1699279927436839000
+ },
+ "info/git": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "mtime_ns": 1699279927456841500
+ },
+ "info/hash_input.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "e1caf7d6f1e342ccd74f92f2d7f8cb2d62430f7a1aee47174212abff7562627a",
+  "mtime_ns": 1699279927348828000
+ },
+ "info/index.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "d857553bcab59ab3a0c721eadcdd4be7b167eb982db1628f595b1d73b325521f",
+  "mtime_ns": 1699279927348828000
+ },
+ "info/licenses": {
+  "type": "dir"
+ },
+ "info/licenses/LICENSE": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "c6dbbf828498be844a89eaa3b84adbab3199e342eb5cb2ed2f0d4ba7ec0f38a3",
+  "mtime_ns": 1563040205000000000
+ },
+ "info/paths.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "a011da939ba0d9cbb7d0e4dfcef9184fc42521aae78b150b964cc19d1ad04b59",
+  "mtime_ns": 1699279927456841500
+ },
+ "info/recipe": {
+  "type": "dir"
+ },
+ "info/recipe/0001-cross.patch": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "d6337d5d9752297db2f1d572d621f918ca7284e34ea8b5d8ccf2670e59caa096",
+  "mtime_ns": 1699279662831537000
+ },
+ "info/recipe/bld.bat": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "4f2df978892f6ab3dbc5eee29d5575a1390c2b8f516d98409469a8f0bc66b21e",
+  "mtime_ns": 1699279662831537000
+ },
+ "info/recipe/build.sh": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "b52b4139fcdd23b8b104a52768fac5cb8a38f519acdf434d5283fcc15f44a7a3",
+  "mtime_ns": 1699279662831537000
+ },
+ "info/recipe/conda_build_config.yaml": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "ecf2cbe3978603bb97b61f44c1cdfec9f4e4c796705063428e8299ab92bbdc20",
+  "mtime_ns": 1699279927436839000
+ },
+ "info/recipe/meta.yaml": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "dd8e31274d2794b33e0e355493773e3a4bbecb8291c0b006755a95232b790075",
+  "mtime_ns": 1699279927432838400
+ },
+ "info/recipe/meta.yaml.template": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "df04a35e058e4686ae5031a632994e930bd64712b8507397d8da354e9058acab",
+  "mtime_ns": 1699279662831537000
+ },
+ "info/recipe/recipe-scripts-license.txt": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "86dc4bc79c9fa4d5dc3ae5558441d5bb8b8736403e70997cf9ae8f671ab5d0ca",
+  "mtime_ns": 1699279759556518300
+ },
+ "info/run_exports.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "d2d3d890c4b9a70a86081629528d5ab765af0f82b90ebf66894f8bdd0e817c12",
+  "mtime_ns": 1699279927424837600
+ },
+ "info/test": {
+  "type": "dir"
+ },
+ "info/test/run_test.sh": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "5a25e04eea67babc3ab09260796b3ab35c8ccd45edfc8272ce88476f52e33f44",
+  "mtime_ns": 1699279927436839000
+ },
+ "lib": {
+  "type": "dir"
+ },
+ "lib/libbz2.a": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "22438c9fe6a4cf2c9c5268a12fc8806e241f2f8947e80c1dd0c182bdd85b57a3",
+  "mtime_ns": 1699279924748540400
+ },
+ "lib/libbz2.so": {
+  "type": "symlink",
+  "target": "libbz2.so.1.0.8"
+ },
+ "lib/libbz2.so.1.0": {
+  "type": "symlink",
+  "target": "libbz2.so.1.0.8"
+ },
+ "lib/libbz2.so.1.0.8": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "60d52da8ca8608947c5d349f6fd15d4bc1050c87e101a90c24efbb7c741b3880",
+  "mtime_ns": 1699279927028788300
+ },
+ "man": {
+  "type": "dir"
+ },
+ "man/man1": {
+  "type": "dir"
+ },
+ "man/man1/bzcmp.1": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "172cde42c47a6d50c244e39d993097dcd3882427d57303078643849cf10a81c4",
+  "mtime_ns": 1699279924780543600
+ },
+ "man/man1/bzdiff.1": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "32d1a7cd115430398e58537532584ef2ab76343c9f094dcd1253d9c4c0f705bf",
+  "mtime_ns": 1699279924768542500
+ },
+ "man/man1/bzegrep.1": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "cf1c98d3fa055506c8af2f8bba4da9c17d367c6409c6ad83a2bc67ccb6630182",
+  "mtime_ns": 1699279924776543100
+ },
+ "man/man1/bzfgrep.1": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "cf1c98d3fa055506c8af2f8bba4da9c17d367c6409c6ad83a2bc67ccb6630182",
+  "mtime_ns": 1699279924776543100
+ },
+ "man/man1/bzgrep.1": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "924aa4a7c7c1467400181e4c0ee1b527db142b6399a717171f2351b72b5899df",
+  "mtime_ns": 1699279924768542500
+ },
+ "man/man1/bzip2.1": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "27b984bb2e8bbee2651d11cda87449cfc4138d2e479b9eaa77b8f60fa5d0bf5d",
+  "mtime_ns": 1699279924740539800
+ },
+ "man/man1/bzless.1": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "216898f9b8acf61eeb471ecf23e47c1452dfd648f7f38d7d3bf48627072dc52c",
+  "mtime_ns": 1699279924780543600
+ },
+ "man/man1/bzmore.1": {
+  "type": "file",
+  "mode": "0664",
+  "sha256": "ccfcf3f995e11adae3035e287252091bb72d165da21e0c385a4965d17c9051c7",
+  "mtime_ns": 1699279924768542500
+ }
+}

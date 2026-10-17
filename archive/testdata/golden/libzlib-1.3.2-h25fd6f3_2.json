@@ -1,0 +1,138 @@
+{
+ "info": {
+  "type": "dir"
+ },
+ "info/about.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "90ee522cf7f1bf1276c05e09f7c9ab451a80c8ebe3f9c3a3ceb4c85a87e6e3b3",
+  "mtime_ns": 1774072609062828300
+ },
+ "info/files": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "f1c55bee8ef5eac65babc7cba68fe9653bf64c2b37341a5f5cf7da095c70329c",
+  "mtime_ns": 1774072609092493300
+ },
+ "info/git": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "mtime_ns": 1774072609098985700
+ },
+ "info/hash_input.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "907c97ee32606604c0ab4b8df5e66c1eed2fbb9d3809c38f5f73c626b6a04df7",
+  "mtime_ns": 1774072609061341800
+ },
+ "info/index.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "ba30c895820204799bf8d3496739ee97a38980fb2705a542aed7d8a11bf6a36c",
+  "mtime_ns": 1774072609062576300
+ },
+ "info/licenses": {
+  "type": "dir"
+ },
+ "info/licenses/LICENSE": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2",
+  "mtime_ns": 1771332426000000000
+ },
+ "info/paths.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "a0e413759eafcd5d36342a8fecd5b8972457f82fba17722931fd4fcee911d55e",
+  "mtime_ns": 1774072609098985700
+ },
+ "info/recipe": {
+  "type": "dir"
+ },
+ "info/recipe/conda_build_config.yaml": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "d0b329ac8a440953cd66172f3d8bf7b695158f5835a8435be5f8dc27dc2cd474",
+  "mtime_ns": 1774072609089828300
+ },
+ "info/recipe/meta.yaml": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "d5fcdf1e021a801489e563a0e47c97c013657ab849c171d89fc6aec4016d92c7",
+  "mtime_ns": 1774072609089807000
+ },
+ "info/recipe/parent": {
+  "type": "dir"
+ },
+ "info/recipe/parent/bld.bat": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "6248e2b07b6e0036ed870ded7c92aae6c1e003267fe87a23bbe835328898a484",
+  "mtime_ns": 1774072405609299700
+ },
+ "info/recipe/parent/build.sh": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "c6d64207060c5c11cf73ecd858e5bd9200aeba4d8b74cf84f12322281a6917ef",
+  "mtime_ns": 1774072405609942000
+ },
+ "info/recipe/parent/conda_build_config.yaml": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "b47fcc123e08b1eb785a3631459ebcc9cb175cc02f771d62cb237c7f2956e90e",
+  "mtime_ns": 1774072405609942000
+ },
+ "info/recipe/parent/meta.yaml": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "173945ac8f7018b73e6c37a786d02ec1eef10c4b5efbf60298f45618ebaf53f1",
+  "mtime_ns": 1774072405609942000
+ },
+ "info/recipe/parent/recipe-scripts-license.txt": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "b76585ad68860b271fc4c5a346444e4a70cacd48a3fd688cb2e8dd18d5935cd1",
+  "mtime_ns": 1774072465466251400
+ },
+ "info/recipe/parent/test_compile_flags.bat": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "53fff5691ed470053ac21457d8e292d89959589244cd4b294f082b9edae40c31",
+  "mtime_ns": 1774072405609942000
+ },
+ "info/recipe/parent/test_compile_flags.c": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "0a02cb523a8554a082616e41cb1b6b66131155224c1a41a63344b95cf70f9b5f",
+  "mtime_ns": 1774072405609942000
+ },
+ "info/run_exports.json": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "4dfda87d619982891f1ce3867f1324a0dc7ee65910933d387aace4c0afaac226",
+  "mtime_ns": 1774072609063915000
+ },
+ "info/test": {
+  "type": "dir"
+ },
+ "info/test/run_test.sh": {
+  "type": "file",
+  "mode": "0644",
+  "sha256": "7f522562ba5bd72f5268c4d8317bee4106133516662ad0230f30c3dbe6b9efb0",
+  "mtime_ns": 1774072609092224600
+ },
+ "lib": {
+  "type": "dir"
+ },
+ "lib/libz.so.1": {
+  "type": "symlink",
+  "target": "libz.so.1.3.2"
+ },
+ "lib/libz.so.1.3.2": {
+  "type": "file",
+  "mode": "0775",
+  "sha256": "22f1601237b86f0f48ed5b83071d1505167ae2e16365b33b4eed6e96dbf71ab0",
+  "mtime_ns": 1774072608805829500
+ }
+}
