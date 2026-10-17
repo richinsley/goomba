@@ -8,12 +8,13 @@ new `internal/` directory, and the specific changes listed below in
 
 Today goomba installs a lockfile. This package adds the step before that:
 resolving match specs against conda channels into a lockfile, then
-installing it. That replaces `micromamba create -n NAME python=3.11 -c
-conda-forge`.
+installing it: the equivalent of `micromamba create -n NAME python=3.11
+-c conda-forge`.
 
-jumpboot does exactly that today, after downloading a micromamba binary.
-It will call goomba as a Go library (WP9), so the library API is the main
-deliverable and the CLI is a thin layer over it.
+jumpboot runs that micromamba command today, after downloading a
+micromamba binary. WP9 adds goomba to jumpboot as a second backend, called
+as a Go library; micromamba stays available. So the library API is the
+main deliverable, and the CLI is a thin layer over it.
 
 ## Library API (root package `goomba`)
 
