@@ -1,0 +1,26 @@
+{
+  "arch": null,
+  "build": "pyhd8ed1ab_0",
+  "build_number": 0,
+  "build_string": "pyhd8ed1ab_0",
+  "channel": "conda-forge",
+  "constrains": [],
+  "depends": [
+    "packaging >=24.0",
+    "python >=3.10"
+  ],
+  "fn": "wheel-0.46.3-pyhd8ed1ab_0.conda",
+  "license": "MIT",
+  "md5": "bdbd7385b4a67025ac2dba4ef8cb6a8f",
+  "name": "wheel",
+  "noarch": "python",
+  "platform": null,
+  "requested_spec": "",
+  "sha256": "d6cf2f0ebd5e09120c28ecba450556ce553752652d91795442f0e70f837126ae",
+  "size": 31858,
+  "subdir": "noarch",
+  "timestamp": 1769139207,
+  "track_features": "",
+  "url": "https://conda.anaconda.org/conda-forge/noarch/wheel-0.46.3-pyhd8ed1ab_0.conda",
+  "version": "0.46.3"
+}

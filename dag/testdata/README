@@ -1,0 +1,21 @@
+Fixtures for package dag.
+
+base-3.11/conda-meta/
+    The 28 conda-meta records of the micromamba-built environment
+    $GOOMBA_REF_ROOT/envs/base-3.11 (conda-forge, linux-64), with the
+    "files", "paths_data", "link", "extracted_package_dir" and
+    "package_tarball_full_path" fields removed: they list installed files
+    and local paths, which the layering test does not need.
+
+pydagger_golden.json
+    Topology computed by pydagger itself ($GOOMBA_REFS/pydagger) for every
+    graph built by the generators in its tests/graph_generators.py that its
+    test_optimization.py and test_benchmark.py use, plus three draws of
+    CPython's random.Random(42). Descendents are sorted by (ordinal, node
+    index), because pydagger's order within one ordinal follows memory
+    addresses; ascendents are exactly as pydagger returns them. Written by
+    pydagger_golden.py:
+
+        python3 -I -B pydagger_golden.py "$GOOMBA_REFS/pydagger" > pydagger_golden.json
+
+    (With no argument it uses $GOOMBA_REFS/pydagger.)

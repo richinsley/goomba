@@ -1,0 +1,24 @@
+{
+  "build": "pyhcf101f3_0",
+  "build_number": 0,
+  "build_string": "pyhcf101f3_0",
+  "channel": "conda-forge",
+  "constrains": [],
+  "depends": [
+    "python >=3.8",
+    "python"
+  ],
+  "fn": "packaging-26.0-pyhcf101f3_0.conda",
+  "license": "Apache-2.0",
+  "md5": "b76541e68fea4d511b1ac46a28dcd2c6",
+  "name": "packaging",
+  "noarch": "python",
+  "requested_spec": "",
+  "sha256": "c1fc0f953048f743385d31c468b4a678b3ad20caffdeaa94bed85ba63049fd58",
+  "size": 72010,
+  "subdir": "noarch",
+  "timestamp": 1769093650,
+  "track_features": "",
+  "url": "https://conda.anaconda.org/conda-forge/noarch/packaging-26.0-pyhcf101f3_0.conda",
+  "version": "26.0"
+}
