@@ -83,9 +83,11 @@ type Event struct{ Kind EventKind; Package string; Done, Total int64 }
    `link.AppendHistoryEntry` for the whole install, including the
    `# update specs` line from `lf.Specs`.
 8. `.pyc`: when `CompilePyc` and python is in the lockfile, run the installed
-   interpreter exactly as libmamba does: `<prefix>/<python> -Wi -u <script>`
-   with libmamba's `compile_pyc.py` embedded (port it, keep its origin
-   header), an empty environment, working directory = prefix, and the
+   interpreter as libmamba does, but isolated so that no package code runs:
+   `<prefix>/<python> -I -S -Wi -u <script>` (`-E -s -S` for python < 3.4,
+   which lacks `-I`), with libmamba's `compile_pyc.py` embedded (port it,
+   keep its origin header), an empty environment, a private working
+   directory (never the prefix), and the
    `Installed.PythonSources` paths on stdin. This is the only process goomba
    runs (`os/exec` is allowed here and nowhere else in your files); document
    it. It runs an interpreter whose archive was just verified against the
@@ -97,9 +99,16 @@ type Event struct{ Kind EventKind; Package string; Done, Total int64 }
 
 `goomba create --lock FILE -p PREFIX [--pkgs-dir DIR] [--no-pyc]`,
 `goomba lock --from-prefix PREFIX -o FILE`, `goomba export --explicit
---lock FILE`, `goomba list -p PREFIX`. Flags only; the CLI reads
-`HTTPS_PROXY`/`NO_PROXY` to build its `http.Client` (the library never does)
-and nothing else from the environment. Exit codes: 0 ok, 1 failure, 2 usage.
+--lock FILE`, `goomba list -p PREFIX`. The library never reads the
+environment. The CLI reads only `HTTPS_PROXY`/`NO_PROXY` (for its
+`http.Client`), `CONDA_OVERRIDE_*` (virtual-package overrides; flags win) and
+the user's cache directory (`os.UserCacheDir`, for the default package cache
+`<user cache dir>/goomba/pkgs`). Exit codes: 0 ok, 1 failure, 2 usage.
+
+Amended after review (2026-10-17): virtual packages are checked against this
+machine by default; `--virtual-from-lock` checks against the lockfile's
+recorded virtual packages instead (for preparing an environment for another
+machine), and repeatable `--virtual-override NAME=VALUE` sets one.
 
 ## Tests
 
