@@ -1,0 +1,11 @@
+Test fixtures for package link. All come from rattler (BSD-3-Clause, see
+NOTICE), github.com/conda/rattler, directory test-data/:
+
+  link-json/*.json                 test-data/link-json/ (unchanged)
+  shebang_test.txt                 test-data/shebang_test.txt (unchanged)
+  link-scripts-0.1.0-h4616a5c_0/   test-data/link-scripts/link-scripts-0.1.0-h4616a5c_0.conda,
+                                   extracted; info/recipe/ and info/hash_input.json
+                                   omitted. The package ships pre-unlink and
+                                   post-link scripts for Unix and Windows.
+
+testdata/fuzz/ holds regression inputs found by the fuzz targets.

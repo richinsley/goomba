@@ -1,0 +1,29 @@
+{
+  "paths": [
+    {
+      "_path": "Scripts/.link-scripts-post-link.bat",
+      "path_type": "hardlink",
+      "sha256": "2ddc46e0334e92a2cd2f185b357124bc5eb3f6b28866dfab5d04bbe98aec07e7",
+      "size_in_bytes": 133
+    },
+    {
+      "_path": "Scripts/.link-scripts-pre-unlink.bat",
+      "path_type": "hardlink",
+      "sha256": "41d9aefa0e16490af6c4ce74fe071cf23d6d6f44c000bfc84a77a0b238647926",
+      "size_in_bytes": 31
+    },
+    {
+      "_path": "bin/.link-scripts-post-link.sh",
+      "path_type": "hardlink",
+      "sha256": "b2f9298833655f741f5c79161f9b78032749f42a93419a6c329441317d96a777",
+      "size_in_bytes": 140
+    },
+    {
+      "_path": "bin/.link-scripts-pre-unlink.sh",
+      "path_type": "hardlink",
+      "sha256": "fdb758118f0ea35c6ba4cab9b86a4a7b57e3191ec4f779a873e97cad4a68be4a",
+      "size_in_bytes": 28
+    }
+  ],
+  "paths_version": 1
+}
