@@ -1,0 +1,1205 @@
+=== 2
+SOLUTION
+p4=6
+p20=10
+p17=11
+p20=5
+p15=5
+p13=11
+p5=11
+CLAUSES 144
+DEFERRED 2
+=== 6
+SOLUTION
+p2=0
+p0=4
+CLAUSES 17
+DEFERRED 0
+=== 18
+UNSAT
+p2 * cannot be installed because there are no viable options:
+└─ p2 2 would require
+   └─ p1 >=0, <1, for which no candidates were found.
+No candidates were found for p1 >=5, <6.
+The following packages are incompatible
+└─ p2 * can be installed with any of the following options:
+   └─ p2 5
+GRAPHVIZ digraph {"root" -> "unresolved"[color=red, label="p1 >=5, <6"];"root" -> "p2=2"[color=black, label="p2 *"];"root" -> "p2=5"[color=black, label="p2 *"];"p2=2" -> "unresolved"[color=red, label="p1 >=0, <1"];}
+CLAUSES 12
+DEFERRED 0
+=== 26
+SOLUTION
+p15=10
+p8=8
+p7=4
+p18=11
+p1=10
+p10=6
+CLAUSES 227
+DEFERRED 4
+=== 37
+SOLUTION
+p3=5
+p1=3
+CLAUSES 32
+DEFERRED 0
+=== 39
+UNSAT
+p2 * cannot be installed because there are no viable options:
+└─ p2 0 would require
+   ├─ p0 *, which can be installed with any of the following options:
+   │  ├─ p0 2 would require
+   │  │  └─ p4 *, which can be installed with any of the following options:
+   │  │     └─ p4 1 | 2
+   │  └─ p0 0 would require
+   │     └─ p3 * | p0 >=1, <5, which can be installed with any of the following options:
+   │        ├─ p3 2
+   │        └─ p0 2, as reported above.
+   └─ missing >=2, <3, which cannot be installed because there are no viable options:
+GRAPHVIZ digraph {"root" -> "p2=0"[color=black, label="p2 *"];"p2=0" -> "unresolved"[color=red, label="missing >=2, <3"];"p2=0" -> "unresolved"[color=red, label="missing >=2, <3"];"p2=0" -> "p0=0"[color=black, label="p0 *"];"p2=0" -> "p0=1"[color=black, label="p0 *"];"p2=0" -> "p0=2"[color=black, label="p0 *"];"p0=2" -> "p4=2"[color=black, label="p4 *"];"p0=1" -> "reason: could not retrieve deps"[color=red, label="excluded"];"p0=0" -> "p0=1"[color=black, label="p3 * | p0 >=1, <5"];"p0=0" -> "p0=2"[color=black, label="p3 * | p0 >=1, <5"];"p0=0" -> "p3=2"[color=black, label="p3 * | p0 >=1, <5"];}
+CLAUSES 25
+DEFERRED 2
+=== 41
+SOLUTION
+p28=2
+p22=11
+p10=4
+p25=4
+p38=11
+p18=10
+p14=4
+p9=9
+p31=10
+p20=9
+p4=11
+p24=8
+p2=11
+p34=6
+p29=7
+p23=10
+p13=6
+CLAUSES 1267
+DEFERRED 47
+=== 50
+SOLUTION
+p4=8
+p25=3
+p8=1
+p24=1
+p33=4
+p15=7
+p16=1
+p35=8
+p18=3
+p19=8
+p1=9
+p31=8
+p6=5
+p34=9
+p14=10
+p23=10
+p36=10
+p27=10
+p0=3
+p20=11
+CLAUSES 752
+DEFERRED 9
+=== 52
+UNSAT
+p1 * cannot be installed because there are no viable options:
+└─ p1 5 would require
+   └─ p0 >=3, <4, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p1=5"[color=black, label="p1 *"];"p1=5" -> "unresolved"[color=red, label="p0 >=3, <4"];}
+CLAUSES 16
+DEFERRED 2
+=== 55
+SOLUTION
+p2=1
+CLAUSES 39
+DEFERRED 0
+=== 59
+SOLUTION
+p28=8
+CLAUSES 944
+DEFERRED 42
+=== 64
+UNSAT
+p1 * cannot be installed because there are no viable options:
+├─ p1 4 would require
+│  └─ p0 >=3, <8, for which no candidates were found.
+└─ p1 2 would require
+   └─ p0 *, which cannot be installed because there are no viable options:
+      └─ p0 0 would require
+         └─ p1 >=0, <2, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p1=2"[color=black, label="p1 *"];"root" -> "p1=4"[color=black, label="p1 *"];"p1=2" -> "p0=0"[color=black, label="p0 *"];"p0=0" -> "unresolved"[color=red, label="p1 >=0, <2"];"p1=4" -> "unresolved"[color=red, label="p0 >=3, <8"];}
+CLAUSES 21
+DEFERRED 0
+=== 67
+SOLUTION
+p0=4
+p4=6
+p1=5
+CLAUSES 29
+DEFERRED 2
+=== 68
+SOLUTION
+p16=11
+p13=7
+p11=8
+p9=11
+p5=6
+p2=8
+p20=6
+p26=7
+p10=10
+p15=0
+p8=11
+CLAUSES 517
+DEFERRED 9
+=== 71
+SOLUTION
+p19=10
+p28=8
+p30=10
+p17=9
+p18=9
+p1=11
+p4=4
+p13=6
+p15=6
+p32=2
+p0=2
+p20=10
+p10=3
+p22=9
+p24=1
+p9=11
+p29=6
+p31=1
+p8=10
+CLAUSES 812
+DEFERRED 16
+=== 76
+UNSAT
+p3 >=4, <9 | p1 >=4, <5 | p0 * cannot be installed because there are no viable options:
+├─ p1 4 would require
+│  └─ p3 >=6, <10, for which no candidates were found.
+├─ p0 5 would require
+│  └─ missing >=1, <6, for which no candidates were found.
+├─ p0 1 would require
+│  └─ p1 >=0, <1 | p0 >=5, <6, which cannot be installed because there are no viable options:
+│     └─ p0 5, as reported above.
+└─ p0 0 | 2 would require
+   └─ p3 >=2, <3, for which no candidates were found.
+The following packages are incompatible
+└─ p3 >=4, <9 | p1 >=4, <5 | p0 * cannot be installed because there are no viable options:
+   └─ p3 5 would require
+      └─ p1 >=1, <6, which cannot be installed because there are no viable options:
+         ├─ p1 4 would require
+         │  └─ p3 >=6, <10, for which no candidates were found.
+         ├─ p1 3 would require
+         │  └─ missing >=6, <11, for which no candidates were found.
+         └─ p1 2 is excluded because could not retrieve deps
+GRAPHVIZ digraph {"root" -> "p0=2"[color=black, label="p3 >=4, <9 | p1 >=4, <5 | p0 *"];"root" -> "p0=1"[color=black, label="p3 >=4, <9 | p1 >=4, <5 | p0 *"];"root" -> "p0=5"[color=black, label="p3 >=4, <9 | p1 >=4, <5 | p0 *"];"root" -> "p1=4"[color=black, label="p3 >=4, <9 | p1 >=4, <5 | p0 *"];"root" -> "p3=5"[color=black, label="p3 >=4, <9 | p1 >=4, <5 | p0 *"];"p3=5" -> "p1=2"[color=black, label="p1 >=1, <6"];"p3=5" -> "p1=3"[color=black, label="p1 >=1, <6"];"p3=5" -> "p1=4"[color=black, label="p1 >=1, <6"];"p1=4" -> "unresolved"[color=red, label="p3 >=6, <10"];"p0=5" -> "unresolved"[color=red, label="missing >=1, <6"];"p0=2" -> "unresolved"[color=red, label="p3 >=2, <3"];"p0=1" -> "p0=5"[color=black, label="p1 >=0, <1 | p0 >=5, <6"];"p1=3" -> "unresolved"[color=red, label="missing >=6, <11"];"p1=2" -> "reason: could not retrieve deps"[color=red, label="excluded"];}
+CLAUSES 39
+DEFERRED 1
+=== 79
+UNSAT
+p2 >=1, <4 cannot be installed because there are no viable options:
+└─ p2 2 would require
+   └─ p0 >=6, <11, for which no candidates were found.
+The following packages are incompatible
+└─ p0 * can be installed with any of the following options:
+   └─ p0 2
+GRAPHVIZ digraph {"root" -> "p0=2"[color=black, label="p0 *"];"root" -> "p2=2"[color=black, label="p2 >=1, <4"];"p2=2" -> "unresolved"[color=red, label="p0 >=6, <11"];}
+CLAUSES 20
+DEFERRED 4
+=== 82
+UNSAT
+The following packages are incompatible
+└─ p0 >=5, <6 cannot be installed because there are no viable options:
+   └─ p0 5 would require
+      └─ p3 >=1, <5 | p3 >=1, <2 | p1 *, which cannot be installed because there are no viable options:
+         ├─ p1 5 would require
+         │  └─ p0 >=0, <5, which cannot be installed because there are no viable options:
+         │     └─ p0 4, which conflicts with the versions reported above.
+         ├─ p1 2 would require
+         │  └─ p3 >=1, <4, for which no candidates were found.
+         ├─ p1 1 is excluded because it is externally excluded
+         └─ p1 0 would require
+            └─ p1 >=5, <8, which cannot be installed because there are no viable options:
+               └─ p1 5, as reported above.
+GRAPHVIZ digraph {"root" -> "p0=5"[color=black, label="p0 >=5, <6"];"p0=5" -> "p1=0"[color=black, label="p3 >=1, <5 | p3 >=1, <2 | p1 *"];"p0=5" -> "p1=1"[color=black, label="p3 >=1, <5 | p3 >=1, <2 | p1 *"];"p0=5" -> "p1=2"[color=black, label="p3 >=1, <5 | p3 >=1, <2 | p1 *"];"p0=5" -> "p1=5"[color=black, label="p3 >=1, <5 | p3 >=1, <2 | p1 *"];"p1=5" -> "p0=4"[color=black, label="p0 >=0, <5"];"p1=2" -> "unresolved"[color=red, label="p3 >=1, <4"];"p1=1" -> "reason: it is externally excluded"[color=red, label="excluded"];"p1=0" -> "p1=5"[color=black, label="p1 >=5, <8"];"p0=4" -> "p0=5"[color=red, label="already installed"];}
+CLAUSES 24
+DEFERRED 0
+=== 85
+UNSAT
+p5 >=4, <5 cannot be installed because there are no viable options:
+└─ p5 4 would require
+   └─ p0 >=2, <7, which cannot be installed because there are no viable options:
+      └─ p0 3 would require
+         └─ p0 >=1, <3, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p5=4"[color=black, label="p5 >=4, <5"];"p5=4" -> "p0=3"[color=black, label="p0 >=2, <7"];"p0=3" -> "unresolved"[color=red, label="p0 >=1, <3"];}
+CLAUSES 9
+DEFERRED 1
+=== 114
+UNSAT
+p0 * cannot be installed because there are no viable options:
+├─ p0 6 would require
+│  └─ missing * | p4 >=5, <6 | p4 >=5, <10, for which no candidates were found.
+├─ p0 5 would require
+│  └─ p2 >=3, <4, for which no candidates were found.
+└─ p0 3 would require
+   └─ p0 >=6, <11, which cannot be installed because there are no viable options:
+      └─ p0 6, as reported above.
+GRAPHVIZ digraph {"root" -> "p0=3"[color=black, label="p0 *"];"root" -> "p0=5"[color=black, label="p0 *"];"root" -> "p0=6"[color=black, label="p0 *"];"p0=6" -> "unresolved"[color=red, label="missing * | p4 >=5, <6 | p4 >=5, <10"];"p0=5" -> "unresolved"[color=red, label="p2 >=3, <4"];"p0=3" -> "p0=6"[color=black, label="p0 >=6, <11"];}
+CLAUSES 15
+DEFERRED 0
+=== 116
+SOLUTION
+p0=10
+p5=0
+p24=10
+p11=8
+CLAUSES 313
+DEFERRED 6
+=== 118
+UNSAT
+p1 >=4, <5 cannot be installed because there are no viable options:
+└─ p1 4 would require
+   └─ p0 >=0, <4, which cannot be installed because there are no viable options:
+      ├─ p0 1 would require
+      │  └─ p0 >=4, <5, for which no candidates were found.
+      └─ p0 0 would require
+         └─ p0 >=6, <11, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p1=4"[color=black, label="p1 >=4, <5"];"p0=0" -> "unresolved"[color=red, label="p0 >=6, <11"];"p1=4" -> "p0=0"[color=black, label="p0 >=0, <4"];"p1=4" -> "p0=1"[color=black, label="p0 >=0, <4"];"p0=1" -> "unresolved"[color=red, label="p0 >=4, <5"];}
+CLAUSES 23
+DEFERRED 1
+=== 123
+SOLUTION
+p0=2
+CLAUSES 35
+DEFERRED 2
+=== 125
+SOLUTION
+p3=10
+p12=3
+p4=11
+p22=0
+p5=11
+p13=11
+p8=10
+p0=5
+p9=8
+p7=6
+p2=7
+p27=6
+p20=4
+CLAUSES 574
+DEFERRED 12
+=== 132
+SOLUTION
+p1=6
+p0=5
+p2=6
+CLAUSES 28
+DEFERRED 0
+=== 135
+UNSAT
+p1 >=4, <6 cannot be installed because there are no viable options:
+└─ p1 5 would require
+   └─ p4 >=6, <10, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p1=5"[color=black, label="p1 >=4, <6"];"p1=5" -> "unresolved"[color=red, label="p4 >=6, <10"];}
+CLAUSES 24
+DEFERRED 1
+=== 143
+SOLUTION
+p8=8
+CLAUSES 1079
+DEFERRED 59
+=== 146
+SOLUTION
+p10=9
+p15=7
+p0=7
+p8=10
+p6=11
+p12=4
+p1=10
+p7=2
+p3=9
+p16=11
+CLAUSES 279
+DEFERRED 8
+=== 149
+UNSAT
+p11 >=1, <8 cannot be installed because there are no viable options:
+└─ p11 6 would require
+   └─ p2 >=3, <7, which cannot be installed because there are no viable options:
+      └─ p2 5 would require
+         └─ p7 >=3, <6, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p11=6"[color=black, label="p11 >=1, <8"];"p11=6" -> "p2=5"[color=black, label="p2 >=3, <7"];"p2=5" -> "unresolved"[color=red, label="p7 >=3, <6"];}
+CLAUSES 227
+DEFERRED 1
+=== 156
+SOLUTION
+p1=5
+CLAUSES 30
+DEFERRED 0
+=== 158
+SOLUTION
+p9=5
+p21=1
+p7=8
+p16=4
+p17=2
+p20=3
+p13=9
+p18=11
+p0=4
+p14=4
+CLAUSES 450
+DEFERRED 7
+=== 165
+UNSAT
+The following packages are incompatible
+└─ p2 >=6, <9 cannot be installed because there are no viable options:
+   └─ p2 6 is excluded because could not retrieve deps
+GRAPHVIZ digraph {"root" -> "p2=6"[color=black, label="p2 >=6, <9"];"p2=6" -> "reason: could not retrieve deps"[color=red, label="excluded"];}
+CLAUSES 33
+DEFERRED 2
+=== 173
+SOLUTION
+p10=10
+p5=9
+p13=8
+CLAUSES 968
+DEFERRED 44
+=== 179
+SOLUTION
+p0=7
+p4=0
+p6=1
+p11=7
+p3=4
+CLAUSES 95
+DEFERRED 4
+=== 185
+SOLUTION
+p17=9
+p14=11
+CLAUSES 734
+DEFERRED 46
+=== 188
+SOLUTION
+p17=8
+p21=9
+p18=3
+p12=8
+p0=10
+p3=7
+CLAUSES 396
+DEFERRED 7
+=== 191
+SOLUTION
+p13=3
+p5=7
+CLAUSES 186
+DEFERRED 2
+=== 197
+SOLUTION
+p3=5
+p7=11
+p10=11
+p0=7
+p26=11
+p9=11
+p27=11
+p22=11
+p11=9
+p12=4
+p5=3
+p15=6
+p4=10
+p6=11
+p17=2
+p31=10
+p21=7
+p33=8
+p13=9
+p14=9
+p0=11
+CLAUSES 567
+DEFERRED 5
+=== 203
+SOLUTION
+p24=5
+p34=9
+p13=8
+p6=11
+p5=11
+p0=0
+p3=8
+p15=9
+p28=10
+p30=10
+p19=10
+p4=9
+p23=10
+p9=6
+p29=4
+p7=6
+p25=4
+p26=2
+p11=8
+p2=8
+p17=5
+p14=6
+p31=11
+CLAUSES 812
+DEFERRED 15
+=== 209
+SOLUTION
+p0=5
+p4=9
+p16=8
+p2=8
+p10=9
+p13=11
+p9=11
+p15=11
+p20=11
+p5=11
+p18=7
+p1=10
+p17=7
+p8=11
+p21=9
+CLAUSES 280
+DEFERRED 4
+=== 212
+SOLUTION
+p11=10
+p7=8
+p6=2
+p5=1
+p0=9
+p8=11
+p10=10
+p3=9
+p2=10
+p1=7
+CLAUSES 696
+DEFERRED 21
+=== 224
+SOLUTION
+p6=3
+p18=1
+CLAUSES 291
+DEFERRED 5
+=== 227
+SOLUTION
+p1=11
+p12=10
+p13=9
+p28=8
+p25=6
+p6=6
+p10=11
+p21=8
+p4=6
+p27=7
+p35=5
+p8=11
+p5=4
+p3=3
+p22=10
+p36=1
+p7=11
+p9=4
+CLAUSES 1464
+DEFERRED 63
+=== 233
+SOLUTION
+p4=3
+p10=3
+p9=7
+p8=8
+p5=8
+p7=1
+p2=9
+CLAUSES 421
+DEFERRED 19
+=== 238
+SOLUTION
+p4=3
+p5=2
+p1=5
+CLAUSES 9
+DEFERRED 0
+=== 245
+SOLUTION
+p19=7
+p4=8
+p10=2
+p14=7
+p24=4
+p13=10
+p27=11
+p29=10
+p6=10
+p15=5
+p8=5
+p9=9
+p18=9
+p25=9
+p2=11
+p3=6
+p26=1
+p28=3
+p0=5
+p1=10
+p20=2
+p7=5
+CLAUSES 789
+DEFERRED 4
+=== 248
+SOLUTION
+p8=5
+p20=11
+p17=10
+p26=6
+p13=7
+p16=9
+p2=10
+CLAUSES 773
+DEFERRED 36
+=== 251
+SOLUTION
+p25=7
+p30=2
+p1=7
+p20=10
+p17=9
+p8=4
+p33=10
+p13=11
+p16=9
+p27=10
+p15=5
+p31=11
+p36=10
+p18=2
+p26=11
+p7=7
+p2=4
+p12=6
+p35=10
+p24=11
+p22=7
+p29=10
+p34=7
+p23=8
+CLAUSES 661
+DEFERRED 9
+=== 257
+SOLUTION
+p8=10
+p18=11
+p1=9
+p3=11
+p9=8
+p5=10
+p12=11
+p25=8
+p16=11
+p20=9
+p7=11
+p13=0
+p19=4
+p24=4
+p0=9
+p17=11
+CLAUSES 687
+DEFERRED 3
+=== 263
+SOLUTION
+p16=4
+p17=9
+p18=10
+p20=8
+p11=8
+p3=7
+p19=9
+p5=2
+CLAUSES 185
+DEFERRED 7
+=== 282
+UNSAT
+The following packages are incompatible
+└─ p1 >=3, <4 | p3 * cannot be installed because there are no viable options:
+   └─ p3 5 is excluded because could not retrieve deps
+GRAPHVIZ digraph {"root" -> "p3=5"[color=black, label="p1 >=3, <4 | p3 *"];"p3=5" -> "reason: could not retrieve deps"[color=red, label="excluded"];}
+CLAUSES 13
+DEFERRED 3
+=== 296
+UNSAT
+p2 >=11, <18 cannot be installed because there are no viable options:
+└─ p2 11 would require
+   └─ p2 >=6, <8, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p2=11"[color=black, label="p2 >=11, <18"];"p2=11" -> "unresolved"[color=red, label="p2 >=6, <8"];}
+CLAUSES 61
+DEFERRED 3
+=== 305
+SOLUTION
+p18=2
+p28=9
+p20=10
+p27=5
+p25=7
+CLAUSES 1164
+DEFERRED 47
+=== 311
+SOLUTION
+p12=1
+p26=11
+p10=10
+p8=9
+p35=5
+p24=10
+p3=6
+p30=0
+p2=11
+p28=7
+CLAUSES 312
+DEFERRED 7
+=== 313
+SOLUTION
+p1=5
+p2=4
+CLAUSES 31
+DEFERRED 0
+=== 314
+SOLUTION
+p3=10
+p10=8
+p7=6
+p6=9
+p13=7
+p16=11
+p11=7
+p0=10
+p12=2
+p15=9
+CLAUSES 979
+DEFERRED 32
+=== 319
+UNSAT
+p5 * cannot be installed because there are no viable options:
+└─ p5 5 would require
+   └─ p4 >=3, <4, which cannot be installed because there are no viable options:
+      └─ p4 3 would require
+         └─ p7 >=3, <5, which cannot be installed because there are no viable options:
+            └─ p7 4 would require
+               └─ p4 >=2, <3, for which no candidates were found.
+The following packages are incompatible
+└─ p5 * cannot be installed because there are no viable options:
+   └─ p5 4 is excluded because it is externally excluded
+GRAPHVIZ digraph {"root" -> "p5=4"[color=black, label="p5 *"];"root" -> "p5=5"[color=black, label="p5 *"];"p5=5" -> "p4=3"[color=black, label="p4 >=3, <4"];"p4=3" -> "p7=4"[color=black, label="p7 >=3, <5"];"p7=4" -> "unresolved"[color=red, label="p4 >=2, <3"];"p5=4" -> "reason: it is externally excluded"[color=red, label="excluded"];}
+CLAUSES 80
+DEFERRED 2
+=== 320
+SOLUTION
+p2=3
+p18=5
+p7=11
+p0=2
+p19=11
+p29=3
+p20=11
+p32=10
+p6=11
+p24=8
+CLAUSES 1359
+DEFERRED 63
+=== 321
+UNSAT
+p3 >=4, <8 cannot be installed because there are no viable options:
+└─ p3 4 would require
+   ├─ p1 *, which can be installed with any of the following options:
+   │  └─ p1 0 | 5
+   └─ p4 >=1, <3, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p3=4"[color=black, label="p3 >=4, <8"];"p3=4" -> "unresolved"[color=red, label="p4 >=1, <3"];"p3=4" -> "p1=5"[color=black, label="p1 *"];}
+CLAUSES 12
+DEFERRED 0
+=== 328
+SOLUTION
+p0=0
+p2=2
+p1=3
+p3=3
+CLAUSES 50
+DEFERRED 4
+=== 331
+SOLUTION
+p1=6
+p0=6
+p4=5
+p2=4
+CLAUSES 31
+DEFERRED 0
+=== 332
+SOLUTION
+p11=7
+p7=2
+p0=9
+CLAUSES 353
+DEFERRED 15
+=== 347
+SOLUTION
+p15=6
+p10=10
+p5=11
+p11=10
+p21=11
+p19=11
+CLAUSES 335
+DEFERRED 7
+=== 350
+SOLUTION
+p27=11
+p26=7
+p2=11
+CLAUSES 332
+DEFERRED 2
+=== 354
+SOLUTION
+p1=2
+CLAUSES 23
+DEFERRED 0
+=== 356
+SOLUTION
+p22=11
+p16=11
+p18=11
+p0=6
+CLAUSES 1021
+DEFERRED 51
+=== 358
+UNSAT
+p1 * cannot be installed because there are no viable options:
+└─ p1 2 would require
+   └─ p1 >=5, <6, for which no candidates were found.
+The following packages are incompatible
+└─ p5 * can be installed with any of the following options:
+   └─ p5 0 | 1
+GRAPHVIZ digraph {"root" -> "p5=1"[color=black, label="p5 *"];"root" -> "p1=2"[color=black, label="p1 *"];"p1=2" -> "unresolved"[color=red, label="p1 >=5, <6"];}
+CLAUSES 27
+DEFERRED 2
+=== 362
+SOLUTION
+p13=9
+p7=7
+p25=11
+p14=8
+p19=6
+p5=9
+p31=10
+p0=9
+p28=6
+p1=11
+p29=9
+p10=10
+p30=6
+CLAUSES 1430
+DEFERRED 51
+=== 365
+SOLUTION
+p22=0
+p5=1
+p28=9
+p8=11
+p25=0
+p3=10
+p14=7
+p16=11
+p18=1
+p19=11
+p1=7
+p21=5
+p7=7
+p13=4
+p9=5
+p11=4
+p18=10
+p24=11
+p6=6
+p17=7
+p29=10
+p20=11
+p0=7
+CLAUSES 1141
+DEFERRED 27
+=== 368
+SOLUTION
+p12=11
+p7=10
+p3=9
+CLAUSES 223
+DEFERRED 5
+=== 371
+UNSAT
+p2 * | p15 >=9, <14 cannot be installed because there are no viable options:
+└─ p2 3 would require
+   └─ p5 >=4, <9, for which no candidates were found.
+The following packages are incompatible
+└─ p2 * | p15 >=9, <14 cannot be installed because there are no viable options:
+   ├─ p2 4 would require
+   │  └─ p3 >=10, <16, which cannot be installed because there are no viable options:
+   │     └─ p3 11, which conflicts with the versions reported above.
+   ├─ p2 1 would require
+   │  └─ p9 >=5, <7, which cannot be installed because there are no viable options:
+   │     └─ p9 5 would require
+   │        └─ p2 >=3, <10, which cannot be installed because there are no viable options:
+   │           ├─ p2 4, as reported above.
+   │           └─ p2 3 would require
+   │              └─ p5 >=4, <9, for which no candidates were found.
+   ├─ p2 0 would require
+   │  └─ p13 >=3, <5, which cannot be installed because there are no viable options:
+   │     └─ p13 3 would constrain
+   │        └─ p2 >=9, <17, which conflicts with any installable versions previously reported
+   ├─ p15 10 | 11 is excluded because could not retrieve deps
+   └─ p15 9 would require
+      └─ p4 *, which cannot be installed because there are no viable options:
+         └─ p4 9 would require
+            ├─ p2 *, which cannot be installed because there are no viable options:
+            │  ├─ p2 4, as reported above.
+            │  ├─ p2 3, as reported above.
+            │  ├─ p2 1, as reported above.
+            │  └─ p2 0, as reported above.
+            └─ p3 >=2, <4, which cannot be installed because there are no viable options:
+               ├─ p3 3, which conflicts with the versions reported above.
+               └─ p3 2, which conflicts with the versions reported above.
+GRAPHVIZ digraph {"root" -> "p15=9"[color=black, label="p2 * | p15 >=9, <14"];"root" -> "p15=11"[color=black, label="p2 * | p15 >=9, <14"];"root" -> "p2=0"[color=black, label="p2 * | p15 >=9, <14"];"root" -> "p2=1"[color=black, label="p2 * | p15 >=9, <14"];"root" -> "p2=3"[color=black, label="p2 * | p15 >=9, <14"];"root" -> "p2=4"[color=black, label="p2 * | p15 >=9, <14"];"p15=9" -> "p4=9"[color=black, label="p4 *"];"p4=9" -> "p3=2"[color=black, label="p3 >=2, <4"];"p4=9" -> "p3=3"[color=black, label="p3 >=2, <4"];"p4=9" -> "p2=0"[color=black, label="p2 *"];"p4=9" -> "p2=1"[color=black, label="p2 *"];"p4=9" -> "p2=3"[color=black, label="p2 *"];"p4=9" -> "p2=4"[color=black, label="p2 *"];"p2=4" -> "p3=11"[color=black, label="p3 >=10, <16"];"p2=3" -> "unresolved"[color=red, label="p5 >=4, <9"];"p2=1" -> "p9=5"[color=black, label="p9 >=5, <7"];"p2=0" -> "p13=3"[color=black, label="p13 >=3, <5"];"p15=11" -> "reason: could not retrieve deps"[color=red, label="excluded"];"p9=5" -> "p2=3"[color=black, label="p2 >=3, <10"];"p9=5" -> "p2=4"[color=black, label="p2 >=3, <10"];"p3=11" -> "p3=11"[color=red, label="already installed"];"p3=11" -> "p4=9"[color=black, label="p4 >=9, <15"];"p13=3" -> "p2=0"[color=red, label=">=9, <17"];"p3=3" -> "p3=2"[color=red, label="already installed"];"p3=2" -> "p3=11"[color=red, label="already installed"];}
+CLAUSES 225
+DEFERRED 10
+=== 377
+SOLUTION
+p0=6
+p7=10
+p12=8
+p3=8
+p1=3
+p5=9
+p9=10
+p8=11
+CLAUSES 450
+DEFERRED 19
+=== 379
+SOLUTION
+p3=3
+p1=0
+CLAUSES 34
+DEFERRED 3
+=== 388
+UNSAT
+p3 * | p0 >=4, <5 | p0 >=3, <4 cannot be installed because there are no viable options:
+├─ p3 1 | 2 would require
+│  └─ p2 >=0, <1, which cannot be installed because there are no viable options:
+│     └─ p2 0 would require
+│        └─ p1 >=0, <1, for which no candidates were found.
+└─ p0 4 would require
+   └─ p4 >=3, <5, for which no candidates were found.
+The following packages are incompatible
+├─ p4 * can be installed with any of the following options:
+│  └─ p4 0
+└─ p3 * | p0 >=4, <5 | p0 >=3, <4 cannot be installed because there are no viable options:
+   └─ p3 5 would constrain
+      └─ p4 >=3, <7, which conflicts with any installable versions previously reported
+GRAPHVIZ digraph {"root" -> "p4=0"[color=black, label="p4 *"];"root" -> "p0=4"[color=black, label="p3 * | p0 >=4, <5 | p0 >=3, <4"];"root" -> "p3=2"[color=black, label="p3 * | p0 >=4, <5 | p0 >=3, <4"];"root" -> "p3=5"[color=black, label="p3 * | p0 >=4, <5 | p0 >=3, <4"];"p0=4" -> "unresolved"[color=red, label="p4 >=3, <5"];"p3=5" -> "p4=0"[color=red, label=">=3, <7"];"p3=2" -> "p2=0"[color=black, label="p2 >=0, <1"];"p2=0" -> "unresolved"[color=red, label="p1 >=0, <1"];}
+CLAUSES 52
+DEFERRED 0
+=== 395
+SOLUTION
+p19=9
+p5=4
+p13=11
+p6=3
+p18=4
+p14=1
+p10=3
+p4=4
+p16=10
+p22=8
+p12=9
+p3=7
+p0=10
+CLAUSES 1049
+DEFERRED 34
+=== 396
+UNSAT
+p0 * cannot be installed because there are no viable options:
+└─ p0 4 would require
+   └─ p1 >=5, <8, for which no candidates were found.
+The following packages are incompatible
+└─ p0 * cannot be installed because there are no viable options:
+   ├─ p0 6 would constrain
+   │  └─ p1 >=3, <6, which conflicts with any installable versions previously reported
+   ├─ p0 3 would constrain
+   │  └─ p2 >=6, <8, which conflicts with any installable versions previously reported
+   └─ p0 1 would require
+      └─ p0 >=3, <4, which cannot be installed because there are no viable options:
+         └─ p0 3, as reported above.
+GRAPHVIZ digraph {"root" -> "p0=1"[color=black, label="p0 *"];"root" -> "p0=3"[color=black, label="p0 *"];"root" -> "p0=4"[color=black, label="p0 *"];"root" -> "p0=6"[color=black, label="p0 *"];"p0=1" -> "p0=3"[color=black, label="p0 >=3, <4"];"p0=3" -> "p2=2"[color=red, label=">=6, <8"];"p0=3" -> "p2=5"[color=black, label="p2 >=1, <6"];"p0=6" -> "p1=1"[color=red, label=">=3, <6"];"p0=6" -> "p1=1"[color=black, label="p1 *"];"p0=6" -> "p1=2"[color=black, label="p1 *"];"p0=4" -> "unresolved"[color=red, label="p1 >=5, <8"];"p2=5" -> "reason: could not retrieve deps"[color=red, label="excluded"];"p1=2" -> "p2=5"[color=black, label="p2 >=5, <6"];}
+CLAUSES 39
+DEFERRED 3
+=== 405
+SOLUTION
+p0=1
+p1=3
+CLAUSES 64
+DEFERRED 2
+=== 412
+SOLUTION
+p1=5
+p0=5
+p2=5
+CLAUSES 24
+DEFERRED 1
+=== 413
+SOLUTION
+p4=0
+p6=8
+CLAUSES 515
+DEFERRED 10
+=== 414
+UNSAT
+p1 * cannot be installed because there are no viable options:
+└─ p1 5 would require
+   └─ p0 >=1, <2, for which no candidates were found.
+No candidates were found for missing >=2, <4.
+The following packages are incompatible
+└─ p1 * can be installed with any of the following options:
+   └─ p1 0 | 2 | 4
+GRAPHVIZ digraph {"root" -> "unresolved"[color=red, label="missing >=2, <4"];"root" -> "p1=4"[color=black, label="p1 *"];"root" -> "p1=5"[color=black, label="p1 *"];"p1=5" -> "unresolved"[color=red, label="p0 >=1, <2"];}
+CLAUSES 19
+DEFERRED 1
+=== 419
+SOLUTION
+p17=9
+p0=5
+p2=11
+CLAUSES 44
+DEFERRED 3
+=== 422
+SOLUTION
+p17=5
+p4=2
+p10=11
+p8=4
+p20=6
+p18=6
+p15=4
+p19=4
+p9=10
+p24=11
+p5=7
+CLAUSES 316
+DEFERRED 9
+=== 428
+SOLUTION
+p17=9
+p6=5
+p23=7
+p19=10
+p12=11
+p20=10
+p2=9
+p5=2
+p14=3
+p21=10
+p24=11
+p4=9
+p1=8
+p8=9
+p25=10
+p7=3
+p22=11
+CLAUSES 1153
+DEFERRED 29
+=== 430
+SOLUTION
+p0=0
+p1=6
+p3=1
+p2=2
+CLAUSES 20
+DEFERRED 2
+=== 432
+UNSAT
+No candidates were found for p1 >=3, <5.
+The following packages are incompatible
+└─ p0 >=5, <8 can be installed with any of the following options:
+   └─ p0 5 | 6
+GRAPHVIZ digraph {"root" -> "unresolved"[color=red, label="p1 >=3, <5"];"root" -> "p0=6"[color=black, label="p0 >=5, <8"];}
+CLAUSES 17
+DEFERRED 2
+=== 433
+UNSAT
+p2 >=4, <7 cannot be installed because there are no viable options:
+├─ p2 6 would require
+│  └─ p1 >=0, <1, for which no candidates were found.
+└─ p2 4 would require
+   └─ p2 >=5, <10, which cannot be installed because there are no viable options:
+      └─ p2 6, as reported above.
+GRAPHVIZ digraph {"root" -> "p2=4"[color=black, label="p2 >=4, <7"];"root" -> "p2=6"[color=black, label="p2 >=4, <7"];"p2=6" -> "unresolved"[color=red, label="p1 >=0, <1"];"p2=4" -> "p2=6"[color=black, label="p2 >=5, <10"];}
+CLAUSES 31
+DEFERRED 2
+=== 434
+UNSAT
+The following packages are incompatible
+└─ p16 * cannot be installed because there are no viable options:
+   ├─ p16 11 would require
+   │  └─ p22 >=4, <7, which cannot be installed because there are no viable options:
+   │     ├─ p22 5 would require
+   │     │  └─ p14 >=10, <13 | p14 >=6, <13 | p20 >=11, <18, which cannot be installed because there are no viable options:
+   │     │     └─ p20 11 would require
+   │     │        └─ p2 >=8, <13, which cannot be installed because there are no viable options:
+   │     │           ├─ p2 11 would require
+   │     │           │  └─ p6 >=7, <10, for which no candidates were found.
+   │     │           └─ p2 10 would require
+   │     │              └─ p16 >=1, <8, which cannot be installed because there are no viable options:
+   │     │                 └─ p16 7, which conflicts with the versions reported above.
+   │     └─ p22 4 would require
+   │        └─ p5 >=2, <5, for which no candidates were found.
+   └─ p16 7, which conflicts with the versions reported above.
+GRAPHVIZ digraph {"root" -> "p16=7"[color=black, label="p16 *"];"root" -> "p16=11"[color=black, label="p16 *"];"p16=11" -> "p22=4"[color=black, label="p22 >=4, <7"];"p16=11" -> "p22=5"[color=black, label="p22 >=4, <7"];"p16=7" -> "unresolved"[color=red, label="p25 >=9, <10"];"p16=7" -> "p16=11"[color=red, label="already installed"];"p2=10" -> "p16=7"[color=black, label="p16 >=1, <8"];"p20=11" -> "p2=10"[color=black, label="p2 >=8, <13"];"p20=11" -> "p2=11"[color=black, label="p2 >=8, <13"];"p2=11" -> "unresolved"[color=red, label="p6 >=7, <10"];"p22=5" -> "p20=11"[color=black, label="p14 >=10, <13 | p14 >=6, <13 | p20 >=11, <18"];"p22=4" -> "unresolved"[color=red, label="p5 >=2, <5"];}
+CLAUSES 328
+DEFERRED 8
+=== 437
+SOLUTION
+p6=8
+p12=11
+p1=10
+p10=10
+p13=8
+CLAUSES 109
+DEFERRED 3
+=== 440
+SOLUTION
+p10=3
+p21=1
+p15=7
+p9=2
+p5=5
+p12=10
+CLAUSES 328
+DEFERRED 11
+=== 449
+SOLUTION
+p24=1
+p23=8
+p10=10
+p18=9
+p17=7
+p27=6
+p22=1
+p15=0
+p11=11
+p25=6
+CLAUSES 730
+DEFERRED 13
+=== 464
+SOLUTION
+p18=7
+p10=11
+p21=7
+p14=10
+CLAUSES 875
+DEFERRED 40
+=== 475
+SOLUTION
+p1=4
+p4=5
+CLAUSES 22
+DEFERRED 6
+=== 476
+SOLUTION
+p0=10
+p1=11
+p10=7
+p5=9
+p8=7
+p8=2
+CLAUSES 407
+DEFERRED 10
+=== 480
+UNSAT
+The following packages are incompatible
+└─ p1 >=5, <7 cannot be installed because there are no viable options:
+   └─ p1 6 would require
+      └─ p2 >=5, <9, which cannot be installed because there are no viable options:
+         └─ p2 5 is excluded because could not retrieve deps
+GRAPHVIZ digraph {"root" -> "p1=6"[color=black, label="p1 >=5, <7"];"p1=6" -> "p2=5"[color=black, label="p2 >=5, <9"];"p2=5" -> "reason: could not retrieve deps"[color=red, label="excluded"];}
+CLAUSES 38
+DEFERRED 0
+=== 482
+SOLUTION
+p8=11
+p7=11
+p0=4
+p4=10
+p9=9
+p3=6
+p5=3
+CLAUSES 168
+DEFERRED 4
+=== 485
+SOLUTION
+p22=8
+p23=6
+p26=4
+p24=10
+p28=7
+p7=11
+p12=7
+p3=4
+p10=11
+p36=11
+p15=9
+p1=10
+p30=9
+p34=8
+p20=7
+p2=11
+CLAUSES 706
+DEFERRED 8
+=== 489
+UNSAT
+p1 >=4, <7 cannot be installed because there are no viable options:
+└─ p1 6 would require
+   └─ p2 >=1, <5, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p1=6"[color=black, label="p1 >=4, <7"];"p1=6" -> "unresolved"[color=red, label="p2 >=1, <5"];}
+CLAUSES 15
+DEFERRED 0
+=== 490
+UNSAT
+p0 >=3, <6 cannot be installed because there are no viable options:
+└─ p0 5 would require
+   └─ p0 >=6, <7, for which no candidates were found.
+GRAPHVIZ digraph {"root" -> "p0=5"[color=black, label="p0 >=3, <6"];"p0=5" -> "unresolved"[color=red, label="p0 >=6, <7"];}
+CLAUSES 25
+DEFERRED 0
+=== 497
+SOLUTION
+p14=9
+p11=7
+p9=4
+p5=8
+p10=9
+p0=4
+p17=9
+p1=6
+p16=2
+CLAUSES 264
+DEFERRED 5
