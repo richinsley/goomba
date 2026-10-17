@@ -1,0 +1,18 @@
+Test fixtures for package repodata.
+
+conda-forge/noarch/
+    Downloaded unmodified from https://conda.anaconda.org/conda-forge/noarch/
+    on 2026-10-17:
+    repodata_shards.msgpack.zst   the noarch shard index (CEP 16), 23,942 names
+    <sha256>.msgpack.zst          the shards it lists for six (0f32d05f...),
+                                  wheel (6dc058e3...), packaging (b0a1c7d2...)
+                                  and pip (00fbfaeb..., 6,326 bytes)
+    Each shard's file name is the sha256 of its (compressed) bytes.
+
+micromamba/
+    Copied unmodified from the mamba repository ($GOOMBA_REFS/mamba),
+    BSD-3-Clause, see NOTICE:
+    test-server/noarch/repodata.json{,.bz2}
+        from micromamba/tests/test-server/repo/noarch/
+    channel_a/{linux-64,noarch}/repodata.json, channel_b/{linux-64,noarch}/repodata.json
+        from micromamba/tests/channel_a and micromamba/tests/channel_b
