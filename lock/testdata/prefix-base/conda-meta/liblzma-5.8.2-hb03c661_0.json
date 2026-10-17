@@ -1,0 +1,27 @@
+{
+  "arch": "x86_64",
+  "build": "hb03c661_0",
+  "build_number": 0,
+  "build_string": "hb03c661_0",
+  "channel": "conda-forge",
+  "constrains": [
+    "xz 5.8.2.*"
+  ],
+  "depends": [
+    "__glibc >=2.17,<3.0.a0",
+    "libgcc >=14"
+  ],
+  "fn": "liblzma-5.8.2-hb03c661_0.conda",
+  "license": "0BSD",
+  "md5": "c7c83eecbb72d88b940c249af56c8b17",
+  "name": "liblzma",
+  "platform": "linux",
+  "requested_spec": "",
+  "sha256": "755c55ebab181d678c12e49cced893598f2bab22d582fbbf4d8b83c18be207eb",
+  "size": 113207,
+  "subdir": "linux-64",
+  "timestamp": 1768752626,
+  "track_features": "",
+  "url": "https://conda.anaconda.org/conda-forge/linux-64/liblzma-5.8.2-hb03c661_0.conda",
+  "version": "5.8.2"
+}

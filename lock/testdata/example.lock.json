@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "platform": "linux-64",
+  "channels": [
+    "https://conda.anaconda.org/conda-forge"
+  ],
+  "specs": [
+    "python=3.11"
+  ],
+  "virtual": {
+    "__archspec": "x86_64",
+    "__glibc": "2.17",
+    "__linux": "0",
+    "__unix": "0"
+  },
+  "packages": [
+    {
+      "name": "pip",
+      "version": "26.0.1",
+      "build": "pyh8b19718_0",
+      "build_number": 0,
+      "subdir": "noarch",
+      "noarch": "python",
+      "url": "https://conda.anaconda.org/conda-forge/noarch/pip-26.0.1-pyh8b19718_0.conda",
+      "sha256": "8e0e8a6ff1bdfb4ec3d6ed8d6e2a0c63ff23bf0fc0c5ca13e6e93b1c2e1fca4e",
+      "md5": "",
+      "size": 1180000,
+      "depends": [
+        "python >=3.10,<3.14.0a0",
+        "setuptools",
+        "wheel"
+      ],
+      "constrains": [],
+      "python_site_packages_path": ""
+    },
+    {
+      "name": "python",
+      "version": "3.11.15",
+      "build": "hd63d673_0_cpython",
+      "build_number": 0,
+      "subdir": "linux-64",
+      "noarch": "",
+      "url": "https://conda.anaconda.org/conda-forge/linux-64/python-3.11.15-hd63d673_0_cpython.conda",
+      "sha256": "bf6a32c69889d38482436a786bea32276756cedf0e9805cc856ffd088e8d00f0",
+      "md5": "a5ebcefec0c12a333bcd6d7bf3bddc1f",
+      "size": 30949404,
+      "depends": [
+        "__glibc >=2.17,<3.0.a0",
+        "tzdata",
+        "pip"
+      ],
+      "constrains": [
+        "python_abi 3.11.* *_cp311"
+      ],
+      "python_site_packages_path": ""
+    },
+    {
+      "name": "tzdata",
+      "version": "2025c",
+      "build": "hc9c84f9_1",
+      "build_number": 1,
+      "subdir": "noarch",
+      "noarch": "generic",
+      "url": "https://conda.anaconda.org/conda-forge/noarch/tzdata-2025c-hc9c84f9_1.conda",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "md5": "",
+      "size": 0,
+      "depends": [],
+      "constrains": [],
+      "python_site_packages_path": ""
+    }
+  ]
+}
