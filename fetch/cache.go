@@ -38,9 +38,11 @@ var (
 	// ErrInsecureURL reports a URL, or a redirect target, that is not
 	// https (or loopback http with AllowHTTP).
 	ErrInsecureURL = errors.New("insecure url")
-	// ErrUnsafeCache reports cache state goomba refuses to use: a marker
-	// key owned by another user or readable or writable by others, a
-	// symlinked lock directory or lock file, or an archive that changed
+	// ErrUnsafeCache reports cache state goomba refuses to use: a cache
+	// directory, a directory above it, a content or lock directory, or an
+	// extracted tree or marker that another user could change; a marker
+	// key owned by another user or readable or writable by others; a
+	// symlinked lock directory or lock file; or an archive that changed
 	// while it was being extracted.
 	ErrUnsafeCache = errors.New("unsafe cache state")
 )
@@ -128,11 +130,15 @@ const treeName = "pkg"
 // A returned path never holds other bytes later. Dir must be writable only
 // by its owner, on a filesystem with Unix permissions: a process able to
 // write it can replace any file in it, and a process of the same user can
-// also read the key. The marker vouches for a tree as extracted; it does not
+// also read the key. On Unix this is checked on every use, together with
+// the directories above Dir and the entries in it (see the package
+// documentation); a cache that fails is an ErrUnsafeCache error. The marker vouches for a tree as extracted; it does not
 // protect files edited afterwards. Stop every process using Dir before
 // deleting .goomba-key.
 type Cache struct {
-	// Dir is the package cache directory. It is created if missing.
+	// Dir is the package cache directory. It is created if missing. Its
+	// symlinks are resolved on first use, and the cache works in the
+	// resolved directory from then on.
 	Dir string
 	// Client performs downloads. nil selects a client with connect, TLS
 	// and response-header timeouts and no proxy (proxies come from the
@@ -150,6 +156,7 @@ type Cache struct {
 	Limits archive.Limits
 
 	mu       sync.Mutex
+	resolved string // Dir with symlinks resolved, set on first use
 	locks    map[string]*keyLock
 	client   *http.Client // default client, built on first use
 	markKey  []byte       // MAC key, loaded on first use
@@ -304,7 +311,8 @@ func (c *Cache) checkFetch(rawURL, sha string, size int64) (*url.URL, string, er
 // withLock runs fn holding the locks for sha, with the content directory
 // <Dir>/<sha> created and the MAC key loaded.
 func (c *Cache) withLock(ctx context.Context, sha string, fn func(dir string, key []byte) error) error {
-	if err := os.MkdirAll(c.Dir, 0o755); err != nil {
+	root, err := c.root()
+	if err != nil {
 		return err
 	}
 	unlock, err := c.lock(ctx, sha)
@@ -316,19 +324,58 @@ func (c *Cache) withLock(ctx context.Context, sha string, fn func(dir string, ke
 	if err != nil {
 		return err
 	}
-	dir, err := ensureDir(filepath.Join(c.Dir, sha))
+	dir, err := ensureDir(filepath.Join(root, sha))
 	if err != nil {
 		return err
 	}
 	return fn(dir, key)
 }
 
+// root returns the cache directory with its symlinks resolved, creating Dir
+// on first use, and checks it (checkCacheDir). Dir is resolved once: from
+// then on the cache works in the resolved directory only, so a symlink on
+// the way to Dir that someone re-points later changes nothing.
+func (c *Cache) root() (string, error) {
+	c.mu.Lock()
+	r := c.resolved
+	c.mu.Unlock()
+	if r == "" {
+		if c.Dir == "" {
+			return "", fmt.Errorf("%w: Cache.Dir is empty", ErrInvalidInput)
+		}
+		if err := os.MkdirAll(c.Dir, 0o755); err != nil {
+			return "", err
+		}
+		real, err := filepath.EvalSymlinks(c.Dir)
+		if err == nil {
+			real, err = filepath.Abs(real)
+		}
+		if err != nil {
+			return "", err
+		}
+		c.mu.Lock()
+		if c.resolved == "" {
+			c.resolved = real
+		}
+		r = c.resolved
+		c.mu.Unlock()
+	}
+	if err := checkCacheDir(r); err != nil {
+		return "", err
+	}
+	return r, nil
+}
+
 // ensureDir makes p a real directory, replacing a file or symlink planted
-// there.
+// there. An existing directory must belong to the current user and not be
+// writable by group or others.
 func ensureDir(p string) (string, error) {
 	fi, err := os.Lstat(p)
 	switch {
 	case err == nil && fi.IsDir():
+		if err := checkPrivate(p, fi); err != nil {
+			return "", err
+		}
 		return p, nil
 	case err == nil:
 		if err := os.Remove(p); err != nil {
@@ -521,7 +568,7 @@ func (c *Cache) openCached(ctx context.Context, dir, fn, sha string, size int64,
 	if hex.EncodeToString(h.Sum(nil)) != sha || after != st {
 		return drop()
 	}
-	if err := writeFileAtomic(side, []byte(sidecarContent(key, fn, sha, st)), 0o644); err != nil {
+	if err := writeFileAtomic(side, []byte(sidecarContent(key, fn, sha, st)), 0o600); err != nil {
 		return nil, err
 	}
 	keep = true

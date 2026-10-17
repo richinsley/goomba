@@ -272,7 +272,7 @@ func (c *Cache) downloadOnce(ctx context.Context, client *http.Client, u *url.UR
 	if err != nil {
 		return nil, err
 	}
-	if err = writeFileAtomic(side, []byte(sidecarContent(key, fn, sha, st)), 0o644); err != nil {
+	if err = writeFileAtomic(side, []byte(sidecarContent(key, fn, sha, st)), 0o600); err != nil {
 		return nil, err
 	}
 	return &archiveFile{File: f, verified: st}, nil

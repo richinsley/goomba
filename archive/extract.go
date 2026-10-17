@@ -16,9 +16,12 @@ import (
 )
 
 // filePermMask keeps the permission bits of regular files (so the
-// executable bit survives) but drops setuid, setgid, sticky and
-// world-write.
-const filePermMask fs.FileMode = 0o775
+// executable bit survives) but drops setuid, setgid, sticky and group and
+// world write. It is applied with chmod, whatever the umask. Package
+// archives commonly carry 0664 files, which conda and micromamba keep;
+// goomba does not, so that nobody but the user can rewrite an extracted
+// file, which environments hard link.
+const filePermMask fs.FileMode = 0o755
 
 // maxSymlinkHops bounds symlink chains, like Linux's MAXSYMLINKS.
 const maxSymlinkHops = 40

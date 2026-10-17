@@ -42,8 +42,8 @@ func checkKeyFile(fi fs.FileInfo) error {
 	if !ok {
 		return fmt.Errorf("%w: no owner information", ErrUnsafeCache)
 	}
-	if int(st.Uid) != os.Getuid() {
-		return fmt.Errorf("%w: owned by uid %d, not the current user (uid %d); %s", ErrUnsafeCache, st.Uid, os.Getuid(), noUnixPerms)
+	if int(st.Uid) != os.Geteuid() {
+		return fmt.Errorf("%w: owned by uid %d, not the current user (uid %d); %s", ErrUnsafeCache, st.Uid, os.Geteuid(), noUnixPerms)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("%w: mode %v grants access to others; %s", ErrUnsafeCache, fi.Mode().Perm(), noUnixPerms)

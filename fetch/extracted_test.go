@@ -118,7 +118,7 @@ func TestExtractedHappyPath(t *testing.T) {
 	if err != nil || !bytes.Equal(marker, markerContent(key, wheelSHA)) {
 		t.Fatalf("marker %q: %v", marker, err)
 	}
-	if !strings.HasPrefix(string(marker), "goomba-extracted 2\nsha256 "+wheelSHA+"\nmac ") {
+	if !strings.HasPrefix(string(marker), "goomba-extracted 3\nsha256 "+wheelSHA+"\nmac ") {
 		t.Fatalf("marker %q does not hold the archive sha256", marker)
 	}
 	ino := inode(t, filepath.Join(p, "info", "index.json"))
@@ -226,8 +226,8 @@ func TestExtractedReplacesUntrustedDirectories(t *testing.T) {
 			if strings.Join(got, "\n") != strings.Join(reference, "\n") {
 				t.Fatalf("tree differs from a clean extraction:\n%v\nwant\n%v", got, reference)
 			}
-			if !trusted(p, key, wheelSHA) {
-				t.Fatal("result not trusted")
+			if ok, err := trusted(p, key, wheelSHA); !ok || err != nil {
+				t.Fatalf("result not trusted: %v", err)
 			}
 			assertClean(t, c.Dir)
 		})

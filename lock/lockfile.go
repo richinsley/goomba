@@ -240,10 +240,10 @@ func (l *Lockfile) Validate() error {
 	channels := make(map[string]bool, len(l.Channels))
 	for _, c := range l.Channels {
 		if err := checkChannel(c); err != nil {
-			return invalidf("channel %q: %v", c, err)
+			return invalidf("channel %q: %v", redactURL(c), err)
 		}
 		if channels[c] {
-			return invalidf("channel %q listed twice", c)
+			return invalidf("channel %q listed twice", redactURL(c))
 		}
 		channels[c] = true
 	}
@@ -292,20 +292,20 @@ func (p *Package) validate(platform string, channels map[string]bool) error {
 	}
 	channel, subdir, fn, err := splitArchiveURL(p.URL)
 	if err != nil {
-		return invalidf("package %q: url %q: %v", p.Name, p.URL, err)
+		return invalidf("package %q: url %q: %v", p.Name, redactURL(p.URL), err)
 	}
 	ext := archiveExt(fn)
 	if ext == "" {
-		return invalidf("package %q: url %q: file is not .conda or .tar.bz2", p.Name, p.URL)
+		return invalidf("package %q: url %q: file is not .conda or .tar.bz2", p.Name, redactURL(p.URL))
 	}
 	if want := p.Name + "-" + p.Version + "-" + p.Build + ext; fn != want {
-		return invalidf("package %q: url %q: file name is not %q", p.Name, p.URL, want)
+		return invalidf("package %q: url %q: file name is not %q", p.Name, redactURL(p.URL), want)
 	}
 	if subdir != p.Subdir {
-		return invalidf("package %q: url %q: subdir %q is not %q", p.Name, p.URL, subdir, p.Subdir)
+		return invalidf("package %q: url %q: subdir %q is not %q", p.Name, redactURL(p.URL), subdir, p.Subdir)
 	}
 	if !channels[channel] {
-		return invalidf("package %q: url %q: channel %q is not listed in channels", p.Name, p.URL, channel)
+		return invalidf("package %q: url %q: channel %q is not listed in channels", p.Name, redactURL(p.URL), redactURL(channel))
 	}
 	if !isLowerHex(p.SHA256, 64) {
 		return invalidf("package %q: sha256 %q is not 64 lowercase hex digits", p.Name, p.SHA256)
@@ -406,7 +406,7 @@ func FromRecords(platform string, channels, specs []string, virt map[string]stri
 		}
 		if r.Fn != "" {
 			if _, _, fn, err := splitArchiveURL(r.URL); err == nil && fn != r.Fn {
-				return nil, invalidf("package %q: fn %q does not match url %q", r.Name, r.Fn, r.URL)
+				return nil, invalidf("package %q: fn %q does not match url %q", r.Name, r.Fn, redactURL(r.URL))
 			}
 		}
 		l.Packages = append(l.Packages, packageFromRecord(r))

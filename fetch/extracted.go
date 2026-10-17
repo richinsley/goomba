@@ -33,11 +33,15 @@ const (
 // markerContent is the exact content of a valid marker for the tree
 // extracted from the archive with digest sha. The MAC binds it to this
 // cache's key, so a marker shipped inside a package, or planted by a
-// process that cannot read the key, is never trusted.
+// process that cannot read the key, is never trusted. Version 3 marks trees
+// whose files carry no group or other write permission (package archive);
+// trees marked by another version are extracted again, so goomba builds
+// with different marker versions that share a cache re-extract each
+// other's trees, each time one of them uses a package.
 func markerContent(key []byte, sha string) []byte {
 	m := hmac.New(sha256.New, key)
-	m.Write([]byte("goomba-extracted 2\x00" + treeName + "\x00" + sha))
-	return []byte("goomba-extracted 2\nsha256 " + sha + "\nmac " + hex.EncodeToString(m.Sum(nil)) + "\n")
+	m.Write([]byte("goomba-extracted 3\x00" + treeName + "\x00" + sha))
+	return []byte("goomba-extracted 3\nsha256 " + sha + "\nmac " + hex.EncodeToString(m.Sum(nil)) + "\n")
 }
 
 // Extracted fetches and unpacks rec, returning <Dir>/<rec.SHA256>/pkg. The
@@ -58,13 +62,14 @@ func (c *Cache) Extracted(ctx context.Context, rec *record.PackageRecord) (strin
 	err = c.withLock(ctx, rec.SHA256, func(dir string, key []byte) error {
 		tree = filepath.Join(dir, treeName)
 		removeStaleExtractions(dir)
-		if trusted(tree, key, rec.SHA256) {
-			return nil
+		if ok, err := trusted(tree, key, rec.SHA256); ok || err != nil {
+			return err
 		}
 		// Another process may have replaced the key; look once.
 		if k, ok := c.reloadKey(key); ok {
-			if key = k; trusted(tree, key, rec.SHA256) {
-				return nil
+			key = k
+			if ok, err := trusted(tree, key, rec.SHA256); ok || err != nil {
+				return err
 			}
 		}
 		f, err := c.openArchive(ctx, u, dir, fn, rec.SHA256, rec.Size, key)
@@ -164,14 +169,31 @@ func (c *Cache) extract(ctx context.Context, f *archiveFile, fn, dir string, key
 }
 
 // trusted reports whether tree is a real directory holding a valid marker
-// for sha.
-func trusted(tree string, key []byte, sha string) bool {
+// for sha. A tree with a valid marker that does not belong to the current
+// user, or that group or others may write (the tree's directory or its
+// marker), is an ErrUnsafeCache error rather than replaced: it can only be
+// there if the cache was not private.
+func trusted(tree string, key []byte, sha string) (bool, error) {
 	fi, err := os.Lstat(tree)
 	if err != nil || !fi.IsDir() {
-		return false
+		return false, nil
 	}
-	b, err := readSmall(filepath.Join(tree, markerName), 512)
-	return err == nil && hmac.Equal(b, markerContent(key, sha))
+	marker := filepath.Join(tree, markerName)
+	b, err := readSmall(marker, 512)
+	if err != nil || !hmac.Equal(b, markerContent(key, sha)) {
+		return false, nil
+	}
+	if err := checkPrivate(tree, fi); err != nil {
+		return false, err
+	}
+	mfi, err := os.Lstat(marker)
+	if err != nil {
+		return false, err
+	}
+	if err := checkPrivate(marker, mfi); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // writeMarker syncs the extracted tree, then records it as complete.
@@ -183,7 +205,7 @@ func writeMarker(ctx context.Context, dir string, key []byte, sha string) error 
 	if err := syncTree(ctx, dir); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
@@ -248,10 +270,14 @@ func (c *Cache) markerKey() ([]byte, error) {
 	if k != nil {
 		return k, nil
 	}
-	p := filepath.Join(c.Dir, keyName)
-	k, err := readKey(p)
+	root, err := c.root()
+	if err != nil {
+		return nil, err
+	}
+	p := filepath.Join(root, keyName)
+	k, err = readKey(p)
 	if errors.Is(err, fs.ErrNotExist) {
-		k, err = createKey(c.Dir, p)
+		k, err = createKey(root, p)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("key %s: %w", p, err)
@@ -265,7 +291,11 @@ func (c *Cache) markerKey() ([]byte, error) {
 // reloadKey rereads the key file and adopts it if it differs from old,
 // reporting whether it did.
 func (c *Cache) reloadKey(old []byte) ([]byte, bool) {
-	k, err := readKey(filepath.Join(c.Dir, keyName))
+	root, err := c.root()
+	if err != nil {
+		return old, false
+	}
+	k, err := readKey(filepath.Join(root, keyName))
 	if err != nil || hmac.Equal(k, old) {
 		return old, false
 	}

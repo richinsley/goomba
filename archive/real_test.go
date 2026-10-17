@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -144,6 +146,23 @@ func comparable(snap map[string]node) map[string]node {
 	return out
 }
 
+// asGoomba turns a snapshot of a micromamba extraction into what goomba
+// extracts: the same, except that files lose group and other write (mode &
+// 0755; micromamba keeps the archive's 0664). Only those bits differ.
+func asGoomba(snap map[string]node) map[string]node {
+	out := make(map[string]node, len(snap))
+	for k, v := range snap {
+		if v.Mode != "" {
+			m, err := strconv.ParseUint(v.Mode, 8, 32)
+			if err == nil {
+				v.Mode = fmt.Sprintf("%04o", m&^0o022)
+			}
+		}
+		out[k] = v
+	}
+	return out
+}
+
 func diffSnapshots(t *testing.T, label string, got, want map[string]node) {
 	t.Helper()
 	keys := slices.Sorted(maps.Keys(maps.Collect(func(yield func(string, bool) bool) {
@@ -193,7 +212,7 @@ func TestRealFixturesMatchMicromambaGolden(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := comparable(snapshot(t, extractFixture(t, fx.file)))
-			diffSnapshots(t, fx.dist, got, want)
+			diffSnapshots(t, fx.dist, got, asGoomba(want))
 		})
 	}
 }
@@ -234,7 +253,7 @@ func TestRealFixturesMatchMicromamba(t *testing.T) {
 			ref := filepath.Join(t.TempDir(), fx.dist)
 			micromambaExtract(t, mm, filepath.Join("testdata", fx.file), ref)
 			want := comparable(snapshot(t, ref))
-			diffSnapshots(t, "micromamba package extract", got, want)
+			diffSnapshots(t, "micromamba package extract", got, asGoomba(want))
 			if !*updateGolden {
 				return
 			}
@@ -266,7 +285,7 @@ func TestRealFixturesMatchPackageCache(t *testing.T) {
 				t.Skipf("no package cache copy: %v", err)
 			}
 			got := comparable(snapshot(t, extractFixture(t, fx.file)))
-			diffSnapshots(t, "micromamba package cache", got, comparable(snapshot(t, cached)))
+			diffSnapshots(t, "micromamba package cache", got, asGoomba(comparable(snapshot(t, cached))))
 		})
 	}
 }
@@ -357,7 +376,7 @@ func TestReferenceCacheMatchesMicromamba(t *testing.T) {
 			if err := Extract(context.Background(), a, dest, Limits{}); err != nil {
 				t.Fatal(err)
 			}
-			diffSnapshots(t, dist, comparable(snapshot(t, dest)), comparable(snapshot(t, cached)))
+			diffSnapshots(t, dist, comparable(snapshot(t, dest)), asGoomba(comparable(snapshot(t, cached))))
 		})
 	}
 	t.Logf("compared %d packages", n)

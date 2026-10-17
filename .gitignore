@@ -3,3 +3,4 @@
 *.out
 /tmp/
 testdata/fuzz/**/corpus-cache/
+.goomba-key

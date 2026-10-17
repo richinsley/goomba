@@ -96,7 +96,7 @@ func ReadExplicit(r io.Reader) (*Explicit, error) {
 		default:
 			ent, err := parseExplicitEntry(line)
 			if err != nil {
-				return nil, invalidf("explicit: line %d: %q: %v", n, line, err)
+				return nil, invalidf("explicit: line %d: %q: %v", n, redactURL(line), err)
 			}
 			if len(e.Entries) >= maxListItems {
 				return nil, invalidf("explicit: more than %d entries", maxListItems)
@@ -129,7 +129,7 @@ func parseExplicitEntry(line string) (ExplicitEntry, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return ExplicitEntry{}, fmt.Errorf("invalid url: %v", err)
+		return ExplicitEntry{}, fmt.Errorf("invalid url: %v", urlParseError(err))
 	}
 	switch {
 	case u.Scheme != "https" && u.Scheme != "http" && u.Scheme != "file",
@@ -203,23 +203,23 @@ func (e *Explicit) Resolve(lookup func(url string) (*record.PackageRecord, bool)
 	for _, ent := range e.Entries {
 		rec, ok := lookup(ent.URL)
 		if !ok || rec == nil {
-			return nil, fmt.Errorf("lock: explicit: %q: %w", ent.URL, ErrNotInIndex)
+			return nil, fmt.Errorf("lock: explicit: %q: %w", redactURL(ent.URL), ErrNotInIndex)
 		}
 		r := *rec
 		if r.URL == "" {
 			r.URL = ent.URL
 		} else if r.URL != ent.URL {
-			return nil, invalidf("explicit: %q: index record has url %q", ent.URL, r.URL)
+			return nil, invalidf("explicit: %q: index record has url %q", redactURL(ent.URL), redactURL(r.URL))
 		}
 		if ent.MD5 != "" && !strings.EqualFold(r.MD5, ent.MD5) {
-			return nil, fmt.Errorf("lock: explicit: %q: md5 %s, index has %q: %w", ent.URL, ent.MD5, r.MD5, ErrHashMismatch)
+			return nil, fmt.Errorf("lock: explicit: %q: md5 %s, index has %q: %w", redactURL(ent.URL), ent.MD5, r.MD5, ErrHashMismatch)
 		}
 		if ent.SHA256 != "" && !strings.EqualFold(r.SHA256, ent.SHA256) {
-			return nil, fmt.Errorf("lock: explicit: %q: sha256 %s, index has %q: %w", ent.URL, ent.SHA256, r.SHA256, ErrHashMismatch)
+			return nil, fmt.Errorf("lock: explicit: %q: sha256 %s, index has %q: %w", redactURL(ent.URL), ent.SHA256, r.SHA256, ErrHashMismatch)
 		}
 		channel, subdir, _, err := splitArchiveURL(canonicalHost(ent.URL))
 		if err != nil {
-			return nil, invalidf("explicit: %q: %v", ent.URL, err)
+			return nil, invalidf("explicit: %q: %v", redactURL(ent.URL), err)
 		}
 		if r.Subdir == "" {
 			r.Subdir = subdir

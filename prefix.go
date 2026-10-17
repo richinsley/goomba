@@ -1,0 +1,250 @@
+package goomba
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+)
+
+// incompleteMarker is written into conda-meta first and removed last, so a
+// prefix left behind by a crash is recognisable as incomplete.
+const incompleteMarker = ".goomba-incomplete"
+
+// prefixTx is a prefix InstallLock is creating. It holds the prefix lock
+// from openPrefix until commit or rollback.
+type prefixTx struct {
+	path    string
+	created bool        // this call created the prefix directory
+	parents []string    // directories created above path, outermost first
+	dir     *os.File    // the open (and on Unix flock-ed) prefix directory
+	id      fs.FileInfo // identity of the prefix directory
+	// mode is the prefix directory's mode once the transaction ends: 0755
+	// for a prefix this call created, the previous mode of an existing one.
+	// Until then the directory is 0700, so that nobody else can reach
+	// anything in it while it is being filled, whatever the umask made of
+	// the directories link and the interpreter create.
+	mode fs.FileMode
+}
+
+// checkPrefixFree reports whether prefix is free for InstallLock: missing,
+// or an empty directory. openPrefix checks again under the lock; this early
+// check only avoids downloading for a prefix that cannot be used.
+func checkPrefixFree(prefix string) error {
+	fi, err := os.Stat(prefix)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("goomba: prefix %s: %w", prefix, err)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("goomba: prefix %s: %w", prefix, ErrPrefixNotEmpty)
+	}
+	f, err := os.Open(prefix)
+	if err != nil {
+		return fmt.Errorf("goomba: prefix %s: %w", prefix, err)
+	}
+	defer f.Close()
+	if names, err := f.Readdirnames(1); len(names) > 0 {
+		return fmt.Errorf("goomba: prefix %s: %w", prefix, ErrPrefixNotEmpty)
+	} else if err != nil && err != io.EOF {
+		return fmt.Errorf("goomba: prefix %s: %w", prefix, err)
+	}
+	return nil
+}
+
+// openPrefix creates prefix (and missing parents) unless it is an existing
+// empty directory, locks it, checks under the lock that it is still empty,
+// and creates conda-meta with the incomplete marker in it. On error nothing
+// this call created is left behind, and nothing it did not create is
+// touched.
+func openPrefix(prefix string) (_ *prefixTx, err error) {
+	tx := &prefixTx{path: prefix}
+	fail := func(err error) error { return fmt.Errorf("goomba: prefix %s: %w", prefix, err) }
+	if err := mkdirAllRecorded(filepath.Dir(prefix), &tx.parents); err != nil {
+		tx.removeParents()
+		return nil, fail(err)
+	}
+	if err := checkPrefixAncestors(prefix); err != nil {
+		tx.removeParents()
+		return nil, fail(err)
+	}
+	switch err := os.Mkdir(prefix, 0o700); {
+	case err == nil:
+		tx.created = true
+	case errors.Is(err, fs.ErrExist):
+	default:
+		tx.removeParents()
+		return nil, fail(err)
+	}
+	// Until the lock is held the directory may be another process's: on a
+	// failure here, remove only an empty directory this call created.
+	abandon := func() {
+		if tx.dir != nil {
+			unlockDir(tx.dir)
+			tx.dir = nil
+		}
+		if tx.created {
+			_ = os.Remove(prefix)
+		}
+		tx.removeParents()
+	}
+	d, err := lockDir(prefix)
+	if err != nil {
+		if errors.Is(err, ErrPrefixLocked) {
+			tx.created = false // another process uses it now
+		}
+		abandon()
+		return nil, fail(err)
+	}
+	tx.dir = d
+	fi, err := d.Stat()
+	if err != nil {
+		abandon()
+		return nil, fail(err)
+	}
+	if !fi.IsDir() {
+		abandon()
+		return nil, fail(ErrPrefixNotEmpty)
+	}
+	if st, err := os.Stat(prefix); err != nil || !os.SameFile(st, fi) {
+		tx.created = false
+		abandon()
+		return nil, fail(errors.New("prefix was replaced while it was being locked"))
+	}
+	if err := checkPrefixOwner(fi); err != nil {
+		tx.created = false
+		abandon()
+		return nil, fail(err)
+	}
+	if names, err := d.Readdirnames(1); len(names) > 0 || err != nil && err != io.EOF {
+		// Not ours to remove, even if this call made the directory.
+		tx.created = false
+		abandon()
+		if err != nil && err != io.EOF {
+			return nil, fail(err)
+		}
+		return nil, fail(ErrPrefixNotEmpty)
+	}
+	tx.id = fi
+	tx.mode = 0o755
+	if !tx.created {
+		tx.mode = fi.Mode().Perm()
+	}
+
+	// From here on the prefix is this call's: roll back on failure.
+	defer func() {
+		if err != nil {
+			tx.rollback()
+		}
+	}()
+	if err := setDirMode(tx.dir, 0o700); err != nil {
+		return nil, fail(err)
+	}
+	meta := filepath.Join(prefix, "conda-meta")
+	if err := os.Mkdir(meta, 0o755); err != nil {
+		return nil, fail(err)
+	}
+	f, err := os.OpenFile(filepath.Join(meta, incompleteMarker), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
+	if err != nil {
+		return nil, fail(err)
+	}
+	_, werr := io.WriteString(f, "goomba is creating this environment; if no goomba process is running, it is incomplete and may be removed\n")
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return nil, fail(werr)
+	}
+	return tx, nil
+}
+
+// commit removes the incomplete marker, gives the prefix directory its final
+// mode and releases the lock. If either fails the lock is kept, for
+// rollback.
+func (tx *prefixTx) commit() error {
+	if err := os.Remove(filepath.Join(tx.path, "conda-meta", incompleteMarker)); err != nil {
+		return fmt.Errorf("goomba: prefix %s: remove %s: %w", tx.path, incompleteMarker, err)
+	}
+	if err := setDirMode(tx.dir, tx.mode); err != nil {
+		return fmt.Errorf("goomba: prefix %s: %w", tx.path, err)
+	}
+	unlockDir(tx.dir)
+	tx.dir = nil
+	return nil
+}
+
+// rollback empties the locked prefix directory (it was empty when this
+// call took it over) through its handle, removes the directory itself if
+// this call created it and it is still at its path, then releases the lock.
+// On Unix the removal works relative to the handle, so a directory renamed
+// or swapped for a symlink meanwhile, above or inside the prefix, cannot
+// redirect it to other data.
+func (tx *prefixTx) rollback() {
+	defer func() {
+		if tx.dir != nil {
+			unlockDir(tx.dir)
+			tx.dir = nil
+		}
+	}()
+	if tx.dir == nil {
+		return
+	}
+	for range 3 { // a process killed during the rollback may still be writing
+		if emptyDir(tx.dir) == nil {
+			break
+		}
+	}
+	if tx.created {
+		if st, err := os.Lstat(tx.path); err == nil && os.SameFile(st, tx.id) {
+			_ = os.Remove(tx.path)
+		}
+		tx.removeParents()
+		return
+	}
+	// An existing prefix gets back its mode, which passed checkPrefixOwner.
+	_ = setDirMode(tx.dir, tx.mode)
+}
+
+// removeParents removes the parent directories this call created, innermost
+// first, as long as they are empty.
+func (tx *prefixTx) removeParents() {
+	for i := len(tx.parents) - 1; i >= 0; i-- {
+		if os.Remove(tx.parents[i]) != nil {
+			break
+		}
+	}
+	tx.parents = nil
+}
+
+// mkdirAllRecorded creates dir and any missing parents, appending each
+// directory it creates to *created, outermost first.
+func mkdirAllRecorded(dir string, created *[]string) error {
+	var missing []string
+	for d := filepath.Clean(dir); ; {
+		if _, err := os.Stat(d); err == nil {
+			break
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		missing = append(missing, d)
+		up := filepath.Dir(d)
+		if up == d {
+			break
+		}
+		d = up
+	}
+	for i := len(missing) - 1; i >= 0; i-- {
+		if err := os.Mkdir(missing[i], 0o755); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				continue
+			}
+			return err
+		}
+		*created = append(*created, missing[i])
+	}
+	return nil
+}

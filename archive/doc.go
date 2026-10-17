@@ -26,6 +26,12 @@
 // before and after the final rename. The destination's parent must not be
 // writable by other users.
 //
+// Extracted files keep their permission bits except setuid, setgid, sticky
+// and group and other write (mode & 0755, applied whatever the umask), and
+// directories are created 0755: nobody but the extracting user can change
+// the tree, which environments hard link. conda and micromamba keep the
+// archive's group write (0664 files are common).
+//
 // On case-insensitive filesystems an archive holding two paths that differ
 // only in case (or in Unicode normalization) is refused: every creation is
 // exclusive, so the second path fails instead of aliasing the first.

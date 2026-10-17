@@ -1,0 +1,80 @@
+[
+ {
+  "name": "root-pkg",
+  "version": "1.0",
+  "build": "0",
+  "build_number": 0,
+  "subdir": "linux-64",
+  "depends": [
+   "isolated-dep"
+  ],
+  "md5": "d7c89558ba9fa0495403155b64376d81",
+  "sha256": "fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726",
+  "size": 100,
+  "fn": "root-pkg-1.0-0.tar.bz2",
+  "url": "https://example.com/root-pkg-1.0-0.tar.bz2",
+  "channel": "https://example.com/"
+ },
+ {
+  "name": "isolated-dep",
+  "version": "1.0",
+  "build": "0",
+  "build_number": 0,
+  "subdir": "linux-64",
+  "depends": [],
+  "md5": "d7c89558ba9fa0495403155b64376d81",
+  "sha256": "fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726",
+  "size": 100,
+  "fn": "isolated-dep-1.0-0.tar.bz2",
+  "url": "https://example.com/isolated-dep-1.0-0.tar.bz2",
+  "channel": "https://example.com/"
+ },
+ {
+  "name": "cycle-a",
+  "version": "1.0",
+  "build": "0",
+  "build_number": 0,
+  "subdir": "linux-64",
+  "depends": [
+   "cycle-b"
+  ],
+  "md5": "d7c89558ba9fa0495403155b64376d81",
+  "sha256": "fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726",
+  "size": 100,
+  "fn": "cycle-a-1.0-0.tar.bz2",
+  "url": "https://example.com/cycle-a-1.0-0.tar.bz2",
+  "channel": "https://example.com/"
+ },
+ {
+  "name": "cycle-b",
+  "version": "1.0",
+  "build": "0",
+  "build_number": 0,
+  "subdir": "linux-64",
+  "depends": [
+   "cycle-c"
+  ],
+  "md5": "d7c89558ba9fa0495403155b64376d81",
+  "sha256": "fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726",
+  "size": 100,
+  "fn": "cycle-b-1.0-0.tar.bz2",
+  "url": "https://example.com/cycle-b-1.0-0.tar.bz2",
+  "channel": "https://example.com/"
+ },
+ {
+  "name": "cycle-c",
+  "version": "1.0",
+  "build": "0",
+  "build_number": 0,
+  "subdir": "linux-64",
+  "depends": [
+   "cycle-a"
+  ],
+  "md5": "d7c89558ba9fa0495403155b64376d81",
+  "sha256": "fe51de6107f9edc7aa4f786a70f4a883943bc9d39b3bb7307c04c41410990726",
+  "size": 100,
+  "fn": "cycle-c-1.0-0.tar.bz2",
+  "url": "https://example.com/cycle-c-1.0-0.tar.bz2",
+  "channel": "https://example.com/"
+ }
+]

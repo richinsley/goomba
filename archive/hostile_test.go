@@ -384,7 +384,7 @@ func TestModes(t *testing.T) {
 	if err := extractTarBz2(t, bz2Compress(tarball), dest); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"exec": "0755", "group-write": "0664", "read-only": "0444", "setuid": "0755", "world-write": "0664"}
+	want := map[string]string{"exec": "0755", "group-write": "0644", "read-only": "0444", "setuid": "0755", "world-write": "0644"}
 	got := snapshot(t, dest)
 	for name, mode := range want {
 		if got[name].Mode != mode {

@@ -65,7 +65,11 @@ func (c *Cache) lock(ctx context.Context, key string) (func(), error) {
 // directory; the lock file itself must be a regular file and is never
 // reached through a symlink.
 func (c *Cache) lockFile(ctx context.Context, name string) (*os.File, error) {
-	dir := filepath.Join(c.Dir, ".locks")
+	root, err := c.root()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(root, ".locks")
 	if err := os.Mkdir(dir, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
 		return nil, err
 	}
@@ -75,6 +79,9 @@ func (c *Cache) lockFile(ctx context.Context, name string) (*os.File, error) {
 	}
 	if !fi.IsDir() {
 		return nil, fmt.Errorf("%w: %s is not a directory", ErrUnsafeCache, dir)
+	}
+	if err := checkPrivate(dir, fi); err != nil {
+		return nil, err
 	}
 	p := filepath.Join(dir, name)
 	f, err := openLockFile(p)

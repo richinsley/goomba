@@ -190,7 +190,7 @@ func parseHTTPS(raw string) (*url.URL, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, err
+		return nil, urlParseError(err)
 	}
 	switch {
 	case u.Scheme != "https":
@@ -315,4 +315,37 @@ func checkSitePackagesPath(p string) error {
 		}
 	}
 	return nil
+}
+
+// redactURL hides the user information (user name and password) of a
+// URL-like string for an error message: "https://user:pw@host/x" becomes
+// "https://***@host/x". Everything between "://" and the last '@' of the URL
+// (up to the first white space) is hidden, since a password may hold '/',
+// '?' or '#' unencoded; an '@' in the path or query hides more than needed,
+// never less. It works on malformed URLs too, since those are what error
+// messages quote.
+func redactURL(s string) string {
+	i := strings.Index(s, "://")
+	if i < 0 {
+		return s
+	}
+	start := i + 3
+	end := len(s)
+	if j := strings.IndexAny(s[start:], " \t\r\n"); j >= 0 {
+		end = start + j
+	}
+	if at := strings.LastIndexByte(s[start:end], '@'); at >= 0 {
+		return s[:start] + "***" + s[start+at:]
+	}
+	return s
+}
+
+// urlParseError returns the cause of a url.Parse error without the URL,
+// which *url.Error quotes in full, credentials included.
+func urlParseError(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err
+	}
+	return err
 }
