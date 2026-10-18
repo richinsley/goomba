@@ -10,4 +10,5 @@ go test -race -count=1 "$@"
 unformatted=$(gofmt -l $(go list -f '{{.Dir}}' "$@") || true)
 if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
 "$(dirname "$0")/check-paths.sh" $(go list -f '{{.Dir}}' "$@")
+"$(dirname "$0")/check-doc-examples.sh"
 echo "gate: OK $*"

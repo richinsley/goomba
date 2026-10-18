@@ -3,6 +3,7 @@ package goomba
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -156,14 +157,14 @@ func openPrefixDir(resolved string) (*os.File, os.FileInfo, error) {
 // briefly, but under a stream of them it may still get ErrPrefixLocked,
 // and may simply be called again. Under the lock it checks that the prefix
 // still holds an interrupted transaction; if not, it removes nothing and
-// returns an error that wraps neither ErrIncomplete nor ErrPrefixLocked (it
-// wraps fs.ErrNotExist for a prefix that is not an environment).
+// returns an error wrapping ErrNotIncomplete, and also fs.ErrNotExist for a
+// prefix that is not an environment.
 //
 // Then it empties the prefix through the locked directory handle with
 // package internal/rmtree: it never follows a symlink and never enters a
 // mount point inside the prefix (a volume mounted there is neither
 // emptied nor chmod-ed: the removal stops with an error wrapping
-// rmtree.ErrMountPoint that names it, and leaves the prefix marked); and
+// ErrMountPoint that names it, and leaves the prefix marked); and
 // it keeps the marker until nothing else is left, so that a removal that
 // is itself killed still leaves a prefix CheckComplete reports as
 // ErrIncomplete. Last it removes the prefix directory, with rmdir
@@ -211,12 +212,15 @@ func removeIncomplete(resolved string, keepDir bool) error {
 		return fail(err)
 	}
 	if st.entries == 0 {
-		return fail(fmt.Errorf("not removed: it holds no interrupted installation: %w", st.verdict()))
+		return fail(fmt.Errorf("not removed: %w: %w", ErrNotIncomplete, st.verdict()))
 	}
 	if err := lockOpenDir(d); err != nil {
 		return fail(err)
 	}
-	if now, err := os.Lstat(resolved); err != nil || !os.SameFile(now, fi) {
+	if now, err := os.Lstat(resolved); errors.Is(err, fs.ErrNotExist) {
+		// Another RemoveIncomplete removed it meanwhile.
+		return fail(fmt.Errorf("removed by another process while it was being locked: %w", err))
+	} else if err != nil || !os.SameFile(now, fi) {
 		return fail(errors.New("prefix was replaced while it was being locked"))
 	}
 	if st, err = readState(d); err != nil {
@@ -224,9 +228,9 @@ func removeIncomplete(resolved string, keepDir bool) error {
 	}
 	if !st.interrupted() {
 		if v := st.verdict(); v != nil {
-			return fail(fmt.Errorf("not removed: it holds no interrupted installation: %w", v))
+			return fail(fmt.Errorf("not removed: %w: %w", ErrNotIncomplete, v))
 		}
-		return fail(errors.New("not removed: it holds a finished environment"))
+		return fail(fmt.Errorf("not removed: %w: it holds a finished environment", ErrNotIncomplete))
 	}
 	for range 3 {
 		if err := emptyDir(d); err != nil {

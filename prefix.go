@@ -150,7 +150,9 @@ func openPrefix(prefix string) (_ *prefixTx, err error) {
 	// From here on the prefix is this call's: roll back on failure.
 	defer func() {
 		if err != nil {
-			tx.rollback()
+			if rerr := tx.rollback(); rerr != nil {
+				err = errors.Join(err, rerr)
+			}
 		}
 	}()
 	if err := setDirMode(tx.dir, 0o700); err != nil {
@@ -198,7 +200,12 @@ func (tx *prefixTx) commit() error {
 // redirect it to other data. The prefix is emptied in emptyPrefix's order,
 // so a rollback that is itself killed leaves a prefix CheckComplete
 // reports as ErrIncomplete, never files without the marker.
-func (tx *prefixTx) rollback() {
+//
+// If the prefix cannot be emptied (a mount point inside it, a file that
+// cannot be removed), rollback returns why, wrapping ErrMountPoint for a
+// mount point; the prefix then keeps its marker, and RemoveIncomplete can
+// remove it once the cause is gone.
+func (tx *prefixTx) rollback() error {
 	defer func() {
 		if tx.dir != nil {
 			unlockDir(tx.dir)
@@ -206,22 +213,27 @@ func (tx *prefixTx) rollback() {
 		}
 	}()
 	if tx.dir == nil {
-		return
+		return nil
 	}
+	var err error
 	for range 3 { // a process killed during the rollback may still be writing
-		if emptyDir(tx.dir) == nil {
+		if err = emptyDir(tx.dir); err == nil {
 			break
 		}
+	}
+	if err != nil {
+		return fmt.Errorf("goomba: rollback of prefix %s left it incomplete: %w", tx.path, err)
 	}
 	if tx.created {
 		// Only if it is still the directory this call made, and with
 		// rmdir semantics: a path swapped meanwhile costs nothing.
 		_ = rmdirSame(tx.path, tx.id)
 		tx.removeParents()
-		return
+		return nil
 	}
 	// An existing prefix gets back its mode, which passed safedir.CheckOwnDir.
 	_ = setDirMode(tx.dir, tx.mode)
+	return nil
 }
 
 // removeParents removes the parent directories this call created, innermost

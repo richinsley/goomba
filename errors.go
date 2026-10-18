@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/richinsley/goomba/internal/rmtree"
+	"github.com/richinsley/goomba/internal/safedir"
 	"github.com/richinsley/goomba/link"
 )
 
-// Sentinel errors returned (wrapped) by InstallLock, Lock, Create and
-// CheckComplete. Test for them with errors.Is. Errors from the packages
+// Sentinel errors returned (wrapped) by InstallLock, Lock, Create,
+// CheckComplete and RemoveIncomplete. Test for them with errors.Is. Errors from the packages
 // InstallLock builds on (lock, fetch, archive, link, virtual) are wrapped
 // unchanged, so their sentinels work
 // too: lock.ErrInvalid for a lockfile that fails validation, the fetch
@@ -65,7 +67,31 @@ var (
 	// A compilation that merely fails for some files is not an error, as in
 	// micromamba.
 	ErrCompilePyc = errors.New("python byte-compilation failed")
+
+	// ErrNotIncomplete reports, from RemoveIncomplete, a prefix that holds
+	// no interrupted installation, so nothing was removed. The error also
+	// wraps fs.ErrNotExist when the prefix is not an environment at all (an
+	// empty directory, or one without conda-meta or a history); without
+	// it, the prefix holds a finished environment.
+	ErrNotIncomplete = errors.New("prefix holds no interrupted installation")
+
+	// ErrMountPoint is wrapped by the error of a rollback or a
+	// RemoveIncomplete that stopped at a mount point inside the prefix.
+	// Nothing below the mount point is removed or changed, and the prefix
+	// keeps its incomplete marker, so CheckComplete reports ErrIncomplete.
+	// Unmount it, then call RemoveIncomplete again.
+	ErrMountPoint = rmtree.ErrMountPoint
 )
+
+// UnsafePathError is the error type behind ErrUnsafePrefix, and behind
+// fetch.ErrUnsafeCache and repodata.ErrUnsafeCache, when a path failed
+// goomba's ownership checks (on Unix): errors.As finds it, and its Path
+// field names the offending path: the prefix or cache directory, a
+// directory above it, or an entry in it that another user could change,
+// or that is not what it must be (a directory replaced by a file). A few
+// refusals carry no UnsafePathError, such as a prefix path that changed
+// while it was being taken. An UnsafePathError is immutable once returned.
+type UnsafePathError = safedir.Error
 
 // VirtualError reports a locked package that depends on a virtual package
 // the host lacks or has in a version the dependency excludes, or that

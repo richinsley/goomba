@@ -1,6 +1,7 @@
 package goomba
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,7 +13,6 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/richinsley/goomba/internal/rmtree"
 	"golang.org/x/sys/unix"
 )
 
@@ -117,8 +117,8 @@ func TestMountHelper(t *testing.T) {
 		chroot()
 		err := RemoveIncomplete("/env")
 		fmt.Println("RemoveIncomplete:", err)
-		if !errors.Is(err, rmtree.ErrMountPoint) || !strings.Contains(err.Error(), "lib/mnt") {
-			fail("RemoveIncomplete across a mount point: %v, want rmtree.ErrMountPoint naming lib/mnt", err)
+		if !errors.Is(err, ErrMountPoint) || !strings.Contains(err.Error(), "lib/mnt") {
+			fail("RemoveIncomplete across a mount point: %v, want ErrMountPoint naming lib/mnt", err)
 		}
 		intact()
 		marked("/env")
@@ -151,16 +151,56 @@ func TestMountHelper(t *testing.T) {
 		if err := unix.Mount("/outside", "/new/lib/mnt", "", unix.MS_BIND, ""); err != nil {
 			fail("bind mount inside the chroot: %v", err)
 		}
-		tx.rollback()
+		err = tx.rollback()
+		fmt.Println("rollback:", err)
+		if !errors.Is(err, ErrMountPoint) || !strings.Contains(err.Error(), "lib/mnt") {
+			fail("rollback across a mount point: %v, want ErrMountPoint naming lib/mnt", err)
+		}
 		intact()
 		marked("/new")
+	case "install-rollback-crossing":
+		// InstallLock reports a rollback that stopped at a mount point,
+		// together with the error that caused it. The channel is served
+		// from this process, so it is set up before the chroot.
+		c := newChannel(t)
+		lf := c.lockfile(t, []string{"a"}, buildPkg(t, tspec{name: "a", version: "1", build: "0", files: []tfile{{path: "lib/a.txt", data: "a"}}}))
+		opt := c.options(t)
+		opt.PkgsDir, opt.CompilePyc = "/pkgs", false
+		errHook := errors.New("hook failed")
+		opt.BeforeCommit = func(_ context.Context, p string) error {
+			if err := os.MkdirAll(filepath.Join(p, "lib", "mnt"), 0o755); err != nil {
+				return err
+			}
+			if err := unix.Mount("/outside", filepath.Join(p, "lib", "mnt"), "", unix.MS_BIND, ""); err != nil {
+				fail("bind mount inside the prefix: %v", err)
+			}
+			return errHook
+		}
+		chroot()
+		err := InstallLock(context.Background(), "/new", lf, opt)
+		fmt.Println("InstallLock:", err)
+		if !errors.Is(err, errHook) || !errors.Is(err, ErrMountPoint) {
+			fail("InstallLock: %v, want the hook's error joined with ErrMountPoint", err)
+		}
+		intact()
+		marked("/new")
+		if err := RemoveIncomplete("/new"); !errors.Is(err, ErrMountPoint) {
+			fail("RemoveIncomplete with the mount still there: %v, want ErrMountPoint", err)
+		}
+		if err := unix.Unmount("/new/lib/mnt", 0); err != nil {
+			fail("unmount: %v", err)
+		}
+		if err := RemoveIncomplete("/new"); err != nil {
+			fail("RemoveIncomplete after the unmount: %v", err)
+		}
+		intact()
 	case "meta-mount":
 		bind("metavol", "env/conda-meta")
 		chroot()
 		err := RemoveIncomplete("/env")
 		fmt.Println("RemoveIncomplete:", err)
-		if !errors.Is(err, rmtree.ErrMountPoint) {
-			fail("RemoveIncomplete with conda-meta a mount point: %v, want rmtree.ErrMountPoint", err)
+		if !errors.Is(err, ErrMountPoint) {
+			fail("RemoveIncomplete with conda-meta a mount point: %v, want ErrMountPoint", err)
 		}
 		for _, f := range []string{"/env/lib/f", "/env/share/s", "/metavol/keep"} {
 			if _, err := os.Stat(f); err != nil {
@@ -197,7 +237,7 @@ func TestRemoveIncompleteMountPoints(t *testing.T) {
 	if len(flag.Args()) > 0 {
 		t.Skip("in a helper process")
 	}
-	for _, mode := range []string{"remove-crossing", "file-mount", "rollback-crossing", "meta-mount", "prefix-mount"} {
+	for _, mode := range []string{"remove-crossing", "file-mount", "rollback-crossing", "install-rollback-crossing", "meta-mount", "prefix-mount"} {
 		t.Run(mode, func(t *testing.T) {
 			root := mountRoot(t)
 			inMountNamespace(t, mode, root)

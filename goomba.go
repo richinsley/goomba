@@ -47,12 +47,17 @@
 //     lacks (micromamba does not check them for explicit installs).
 //
 // The package keeps no global state and reads no environment variables or
-// configuration files: everything comes from LockOptions and
-// InstallOptions. The only
-// process it starts is the new environment's Python interpreter, to
-// byte-compile noarch: python packages as libmamba does (see InstallLock),
-// except that it runs the interpreter isolated (-I -S, so no package code
-// such as a .pth file runs), directly rather than through a shell script
+// configuration files of its own: everything comes from LockOptions and
+// InstallOptions (Go's TLS stack still uses the system's trusted
+// certificates, which SSL_CERT_FILE and SSL_CERT_DIR can change). It starts
+// these processes only: when the caller supplies no virtual packages,
+// package virtual runs nvidia-smi and getconf to detect them (from fixed
+// system locations it checks, or the caller's virtual.Options.NvidiaSMI);
+// on macOS package link re-signs rewritten osx-arm64 binaries with
+// /usr/bin/codesign; and InstallLock runs the new environment's Python
+// interpreter to byte-compile noarch: python packages as libmamba does,
+// except that it runs it isolated (-I -S, so no package code such as a
+// .pth file runs), directly rather than through a shell script
 // that activates the prefix, from a private directory inside conda-meta
 // rather than from the prefix, with the script kept there rather than in
 // the shared temporary directory, which would come first on sys.path. A

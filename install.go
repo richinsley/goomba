@@ -193,7 +193,9 @@ type Event struct {
 
 // InstallLock creates prefix (which must not exist, or be an empty
 // directory) from lf. On any error or cancellation the prefix is removed
-// again if this call created it; the package cache is kept.
+// again if this call created it, or emptied if it was an existing empty
+// directory, unless the rollback itself fails (see below); the package
+// cache is kept.
 //
 // The steps, in order:
 //
@@ -254,9 +256,10 @@ type Event struct {
 // platform or only noarch packages, which real channels contain) are
 // broken where a depth-first search in name order closes them.
 //
-// Byte-compilation is the only process goomba runs itself (a BeforeCommit
-// hook runs whatever the caller chooses): the interpreter of the
-// environment's python package, checked just before to be the file linked
+// Byte-compilation is the only process InstallLock runs from the new
+// environment (besides nvidia-smi and getconf when opt.Virtual is nil, and
+// codesign on macOS; a BeforeCommit hook runs whatever the caller
+// chooses): the interpreter of the environment's python package, checked just before to be the file linked
 // from the verified package, as "<prefix>/bin/pythonX.Y -I -S -Wi -u
 // compile_pyc.py" with libmamba's script, so that neither .pth files nor
 // sitecustomize of a locked package run; its working directory is a
@@ -270,7 +273,11 @@ type Event struct {
 // point inside it (package internal/rmtree), and in an order that keeps
 // .goomba-incomplete until nothing else is left: a process killed at any
 // moment, while installing or rolling back, leaves a prefix CheckComplete
-// reports as ErrIncomplete (RemoveIncomplete removes it), or nothing.
+// reports as ErrIncomplete (RemoveIncomplete removes it), or nothing. A
+// rollback that cannot empty the prefix (a mount point inside it, wrapping
+// ErrMountPoint, or a file it cannot remove) leaves it marked too, and the
+// error InstallLock returns then joins the rollback's error to the one
+// that caused it (errors.Is finds both).
 //
 // Errors come in this order, so callers that branch on them see the first
 // condition that applies: a nil or invalid lockfile (lock.ErrInvalid); a
@@ -454,7 +461,9 @@ func InstallLock(ctx context.Context, prefix string, lf *lock.Lockfile, opt Inst
 	committed := false
 	defer func() {
 		if !committed { // an error, or a panic unwinding
-			tx.rollback()
+			if rerr := tx.rollback(); rerr != nil && err != nil {
+				err = errors.Join(err, rerr)
+			}
 		}
 	}()
 

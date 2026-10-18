@@ -142,7 +142,8 @@ func Lock(ctx context.Context, opt LockOptions) (*lock.Lockfile, error) {
 // errors (ErrInvalidOptions for the specs and channels, the repodata
 // errors, *solve.Unsolvable), then InstallLock's.
 // opt.Progress receives the resolve's events and inst.Progress the
-// install's. On any error nothing is left in prefix (see InstallLock).
+// install's. On any error the installation is rolled back (see
+// InstallLock, also for a rollback that cannot finish).
 //
 // Create is safe for concurrent use with different prefixes.
 func Create(ctx context.Context, prefix string, opt LockOptions, inst InstallOptions) (*lock.Lockfile, error) {

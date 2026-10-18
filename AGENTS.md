@@ -1,10 +1,9 @@
 # goomba — guide for implementing agents
 
 goomba replaces micromamba with pure Go: it resolves conda match specs to
-lockfiles and installs lockfiles into environment prefixes. The design doc is
-https://claude.ai/code/artifact/bca53686-95f0-4b75-9015-0a98d627865d — your
-brief in `docs/briefs/` restates everything you need from it, so you do not
-have to open it.
+lockfiles and installs lockfiles into environment prefixes. The design is
+summarised in `docs/architecture.md`; your brief in `docs/briefs/` restates
+everything you need from the original design document.
 
 The reason goomba exists is supply-chain safety. Treat every input (archives,
 index data, lockfiles, entry-point strings, paths) as hostile, and fail closed.

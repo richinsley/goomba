@@ -74,8 +74,8 @@ func TestRemoveIncomplete(t *testing.T) {
 		complete := filepath.Join(t.TempDir(), "env")
 		must(t, InstallLock(context.Background(), complete, lf, c.options(t)))
 		err := removeUnchanged(t, complete)
-		if errors.Is(err, ErrIncomplete) || errors.Is(err, ErrPrefixLocked) || errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("complete environment: %v", err)
+		if !errors.Is(err, ErrNotIncomplete) || errors.Is(err, ErrIncomplete) || errors.Is(err, ErrPrefixLocked) || errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("complete environment: %v, want ErrNotIncomplete alone", err)
 		}
 		t.Logf("complete environment: %v", err)
 		for name, setup := range map[string]func(string){
@@ -92,8 +92,11 @@ func TestRemoveIncomplete(t *testing.T) {
 		} {
 			prefix := filepath.Join(t.TempDir(), "env")
 			setup(prefix)
-			if err := removeUnchanged(t, prefix); !errors.Is(err, fs.ErrNotExist) || errors.Is(err, ErrIncomplete) {
-				t.Errorf("%s: %v, want fs.ErrNotExist", name, err)
+			// A missing prefix holds nothing to judge; the others are
+			// directories that hold no environment.
+			err := removeUnchanged(t, prefix)
+			if !errors.Is(err, fs.ErrNotExist) || errors.Is(err, ErrIncomplete) || errors.Is(err, ErrNotIncomplete) != (name != "missing") {
+				t.Errorf("%s: %v, want fs.ErrNotExist, and ErrNotIncomplete unless missing", name, err)
 			}
 		}
 		if err := RemoveIncomplete(""); !errors.Is(err, ErrInvalidOptions) {
@@ -131,8 +134,8 @@ func TestRemoveIncomplete(t *testing.T) {
 		l, err := lockDir(prefix)
 		must(t, err)
 		defer unlockDir(l)
-		if err := removeUnchanged(t, prefix); !errors.Is(err, fs.ErrNotExist) || errors.Is(err, ErrPrefixLocked) {
-			t.Errorf("err = %v, want fs.ErrNotExist", err)
+		if err := removeUnchanged(t, prefix); !errors.Is(err, fs.ErrNotExist) || !errors.Is(err, ErrNotIncomplete) || errors.Is(err, ErrPrefixLocked) {
+			t.Errorf("err = %v, want fs.ErrNotExist and ErrNotIncomplete", err)
 		}
 	})
 	t.Run("unsupported without the prefix lock", func(t *testing.T) {

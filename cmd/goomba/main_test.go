@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/richinsley/goomba/archive"
@@ -370,5 +371,52 @@ func TestRedactProxy(t *testing.T) {
 		if got := redactProxy(in); got != want {
 			t.Errorf("redactProxy(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// epipeWriter fails every write as a pipe whose reader has gone does.
+type epipeWriter struct{}
+
+func (epipeWriter) Write([]byte) (int, error) {
+	return 0, &os.PathError{Op: "write", Path: "pipe", Err: syscall.EPIPE}
+}
+
+// TestClosedStdout: when the reader of standard output goes away (goomba
+// list | head), goomba exits 1 without a message; an EPIPE that did not
+// come from standard output is still reported.
+func TestClosedStdout(t *testing.T) {
+	lockFile, srv, _ := testLockfile(t, "ca-certificates-2026.2.25-hbd8a1cb_0")
+	cache := t.TempDir()
+	c := &cli{
+		client:   func() (*http.Client, error) { return srv.Client(), nil },
+		cacheDir: func() (string, error) { return cache, nil },
+	}
+	prefix := filepath.Join(t.TempDir(), "env")
+	if code, _, stderr := runCLI(t, c, "create", "--lock", lockFile, "-p", prefix, "--no-pyc"); code != exitOK {
+		t.Fatalf("create: exit %d: %s", code, stderr)
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	defer w.Close()
+	for _, args := range [][]string{
+		{"list", "-p", prefix},
+		{"export", "--explicit", "--lock", lockFile},
+		{"lock", "--from-prefix", prefix, "-o", "-"},
+	} {
+		for name, out := range map[string]io.Writer{"pipe": stdoutWriter{w}, "fake": stdoutWriter{epipeWriter{}}} {
+			var errOut bytes.Buffer
+			c := &cli{stdout: out, stderr: &errOut}
+			if code := c.run(context.Background(), args); code != exitFailure || errOut.Len() != 0 {
+				t.Errorf("%s to a closed %s: exit %d, stderr %q; want 1 and no message", args[0], name, code, errOut.String())
+			}
+		}
+	}
+	var errOut bytes.Buffer
+	c = &cli{stdout: epipeWriter{}, stderr: &errOut}
+	if code := c.run(context.Background(), []string{"list", "-p", prefix}); code != exitFailure || !strings.Contains(errOut.String(), "broken pipe") {
+		t.Errorf("EPIPE not from standard output: exit %d, stderr %q; want it reported", code, errOut.String())
 	}
 }

@@ -64,6 +64,17 @@ func TestVirtualOverrides(t *testing.T) {
 	if err := os.WriteFile(recordedFile, buf.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// Solved for the platform's conservative defaults, as for any machine.
+	defaults := *lf
+	defaults.Virtual = virtual.ToOverrides(virtual.Defaults(lf.Platform))
+	buf.Reset()
+	if err := defaults.Write(&buf); err != nil {
+		t.Fatal(err)
+	}
+	defaultsFile := filepath.Join(t.TempDir(), "defaults.lock.json")
+	if err := os.WriteFile(defaultsFile, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name    string
 		env     []string
@@ -81,6 +92,7 @@ func TestVirtualOverrides(t *testing.T) {
 		{"from lock", nil, []string{"--virtual-from-lock"}, recordedFile, exitOK, "", "warning"},
 		{"from lock with override", nil, []string{"--virtual-from-lock", "--virtual-override", "unix="}, recordedFile, exitFailure, `requires "__unix"`, ""},
 		{"recorded set differs", nil, nil, recordedFile, exitOK, "warning: the lockfile was solved for other virtual packages", ""},
+		{"recorded defaults", nil, nil, defaultsFile, exitOK, "", "warning"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &cli{

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -171,6 +172,47 @@ func TestForeignPrefixRefused(t *testing.T) {
 		}
 		if ents, _ := os.ReadDir(prefix); len(ents) != 0 {
 			t.Errorf("mode %v: refused prefix touched: %v", mode, ents)
+		}
+	}
+}
+
+// TestUnsafePathError: the refusals of a prefix and of a package cache that
+// other users could change carry an *UnsafePathError naming the offending
+// directory, for callers that tell the user what to fix.
+func TestUnsafePathError(t *testing.T) {
+	skipIfRoot(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("ownership is not checked on Windows")
+	}
+	c := newChannel(t)
+	shared := filepath.Join(t.TempDir(), "shared")
+	must(t, os.Mkdir(shared, 0o755))
+	must(t, os.Chmod(shared, 0o777)) // writable by others, not sticky
+	sharedReal, err := filepath.EvalSymlinks(shared)
+	must(t, err)
+	opt := c.options(t)
+	for name, tc := range map[string]struct {
+		err  func() error
+		is   error
+		path string
+	}{
+		"prefix below it": {func() error { return ValidateInstall(filepath.Join(shared, "env"), opt) }, ErrUnsafePrefix, sharedReal},
+		"prefix status":   {func() error { return CheckComplete(filepath.Join(shared, "env")) }, ErrUnsafePrefix, sharedReal},
+		"package cache below it": {func() error {
+			o := opt
+			o.PkgsDir = filepath.Join(shared, "pkgs")
+			return ValidateInstall(filepath.Join(t.TempDir(), "env"), o)
+		}, fetch.ErrUnsafeCache, sharedReal},
+	} {
+		err := tc.err()
+		var upe *UnsafePathError
+		switch {
+		case !errors.Is(err, tc.is):
+			t.Errorf("%s: %v, want %v", name, err, tc.is)
+		case !errors.As(err, &upe):
+			t.Errorf("%s: %v carries no *UnsafePathError", name, err)
+		case upe.Path != tc.path:
+			t.Errorf("%s: Path = %q, want %q", name, upe.Path, tc.path)
 		}
 	}
 }

@@ -89,7 +89,8 @@
 // SIGINT, SIGTERM and SIGHUP cancel the running command; an interrupted
 // create removes what it installed ("rolling back"). Further signals during
 // the rollback are ignored. SIGPIPE is ignored, so a closed output pipe does
-// not kill goomba halfway.
+// not kill goomba halfway. When the reader of standard output stops early
+// (goomba list -p PREFIX | head), goomba exits 1 without a message.
 //
 // Exit status: 0 on success, 1 on failure, 2 for a usage error.
 package main
@@ -100,11 +101,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 	"unicode"
@@ -149,7 +152,7 @@ const (
 func main() {
 	ctx, stop := signalContext(context.Background(), os.Stderr)
 	c := &cli{
-		stdout:   os.Stdout,
+		stdout:   stdoutWriter{os.Stdout},
 		stderr:   os.Stderr,
 		client:   func() (*http.Client, error) { return proxyClient(os.Getenv, os.Stderr) },
 		environ:  os.Environ,
@@ -179,6 +182,24 @@ type cli struct {
 // errUsage marks a command line error.
 var errUsage = errors.New("usage error")
 
+// errOutputClosed marks a write to standard output that failed because its
+// reader went away, as when "goomba list | head" stops reading.
+var errOutputClosed = errors.New("standard output closed")
+
+// stdoutWriter is the standard output of the commands that print results.
+// A write its reader refused (EPIPE) returns an error wrapping
+// errOutputClosed, so that run can tell it from an EPIPE elsewhere, such as
+// on a network connection.
+type stdoutWriter struct{ w io.Writer }
+
+func (s stdoutWriter) Write(p []byte) (int, error) {
+	n, err := s.w.Write(p)
+	if errors.Is(err, syscall.EPIPE) {
+		err = fmt.Errorf("%w: %w", errOutputClosed, err)
+	}
+	return n, err
+}
+
 func (c *cli) run(ctx context.Context, args []string) int {
 	if len(args) == 0 {
 		fmt.Fprint(c.stderr, usage)
@@ -204,6 +225,9 @@ func (c *cli) run(ctx context.Context, args []string) int {
 	switch {
 	case err == nil:
 		return exitOK
+	case errors.Is(err, errOutputClosed):
+		// Whoever read the output stopped early; there is nobody to tell.
+		return exitFailure
 	case errors.Is(err, flag.ErrHelp):
 		fmt.Fprint(c.stdout, usage)
 		return exitOK
@@ -420,7 +444,7 @@ func (c *cli) create(ctx context.Context, args []string) error {
 			return err
 		}
 		if opt.Virtual, err = c.virtualSet(ctx, lf, *fromLock, overrides, *nvidiaSMI); err != nil {
-			return err
+			return timedOut(err, *rf.timeout)
 		}
 		if err := goomba.InstallLock(ctx, abs, lf, opt); err != nil {
 			return timedOut(err, *rf.timeout)
@@ -429,7 +453,7 @@ func (c *cli) create(ctx context.Context, args []string) error {
 	} else {
 		lo, err := c.lockOptions(ctx, rf, specs, "", overrides, *nvidiaSMI, client)
 		if err != nil {
-			return err
+			return timedOut(err, *rf.timeout)
 		}
 		opt.Virtual = lo.Virtual
 		lf, err := goomba.Create(ctx, abs, lo, opt)
@@ -705,9 +729,13 @@ func (c *cli) virtualSet(ctx context.Context, lf *lock.Lockfile, fromLock bool, 
 		if errors.Is(err, virtual.ErrInvalidOption) {
 			return nil, fmt.Errorf("%w: create: --nvidia-smi: %v", errUsage, err)
 		}
-		if err == nil && len(lf.Virtual) > 0 {
+		// A lockfile solved for a platform's conservative defaults
+		// (virtual.Defaults) is meant for any machine of the platform, so it
+		// draws no warning; either way the packages are checked against
+		// this machine below.
+		if err == nil && len(lf.Virtual) > 0 && !maps.Equal(lf.Virtual, virtual.ToOverrides(virtual.Defaults(lf.Platform))) {
 			if diff := virtualDiff(lf.Virtual, virtual.ToOverrides(recs)); diff != "" {
-				fmt.Fprintf(c.stderr, "goomba: warning: the lockfile was solved for other virtual packages than this machine has (%s); use --virtual-from-lock to check against the lockfile's\n", diff)
+				fmt.Fprintf(c.stderr, "goomba: warning: the lockfile was solved for other virtual packages than this machine has (%s); its packages are checked against this machine's (--virtual-from-lock checks against the lockfile's instead, to prepare an environment for another machine)\n", diff)
 			}
 		}
 	}
@@ -804,7 +832,7 @@ func (c *cli) lock(ctx context.Context, args []string) error {
 	}
 	opt, err := c.lockOptions(ctx, rf, specs, *platform, overrides, *nvidiaSMI, client)
 	if err != nil {
-		return err
+		return timedOut(err, *rf.timeout)
 	}
 	lf, err := goomba.Lock(ctx, opt)
 	if err != nil {
@@ -883,14 +911,25 @@ func (c *cli) list(args []string) error {
 		return err
 	}
 	if _, err := os.Lstat(filepath.Join(abs, "conda-meta", ".goomba-incomplete")); err == nil {
-		fmt.Fprintf(c.stderr, "goomba: warning: %s is incomplete: an installation into it did not finish\n", abs)
+		if errors.Is(goomba.CheckComplete(abs), goomba.ErrPrefixLocked) {
+			fmt.Fprintf(c.stderr, "goomba: warning: %s is incomplete: a goomba process is installing or removing it right now\n", terminalSafe(abs))
+		} else {
+			fmt.Fprintf(c.stderr, "goomba: warning: %s is incomplete: an installation into it did not finish\n", terminalSafe(abs))
+		}
 	}
 	tw := tabwriter.NewWriter(c.stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "Name\tVersion\tBuild\tChannel")
 	for _, r := range recs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", printable(r.Record.Name), printable(r.Record.Version), printable(r.Record.Build), printable(channelName(r.Record.Channel)))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", cell(r.Record.Name), cell(r.Record.Version), cell(r.Record.Build), cell(channelName(r.Record.Channel)))
 	}
 	return tw.Flush()
+}
+
+// cell escapes a value read from a prefix for one cell of list's table:
+// as terminalSafe does, and tabs and line breaks too, which would break
+// the table.
+func cell(s string) string {
+	return strings.NewReplacer("\t", `\t`, "\n", `\n`).Replace(terminalSafe(s))
 }
 
 // channelName shortens channels below conda.anaconda.org to their name, as

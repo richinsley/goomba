@@ -1,8 +1,10 @@
 // Package netguard is goomba's network policy: which URLs a request may
 // lead to and which addresses its connections may reach. Package repodata
 // applies it to index downloads and package fetch to package downloads, so
-// a hostile index, lockfile, redirect or DNS answer cannot aim goomba's
-// requests at local services (SSRF).
+// a hostile index, redirect or DNS answer cannot aim requests that start at
+// a public host at local services (SSRF). The URL a download starts from is
+// trusted: a channel or a lockfile URL that names a private or loopback
+// address literal itself (an internal mirror) is fetched from there.
 //
 // A Policy comes from the URL a download starts from (For): a URL on a
 // public host may only lead to https URLs on public hosts: not a loopback,

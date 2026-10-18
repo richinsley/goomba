@@ -59,8 +59,9 @@ type pycResult struct {
 // rather than the shared temporary directory. The directory is removed
 // afterwards.
 //
-// This is the only process goomba runs. The interpreter is the one just
-// linked from an archive verified against the lockfile, checked again by
+// This is the only process goomba runs from the new environment. The
+// interpreter is the one just linked from an archive verified against the
+// lockfile, checked again by
 // verifyInterpreter just before. If ctx is cancelled the interpreter and its
 // worker processes are killed.
 //
