@@ -55,7 +55,12 @@
 // such as a .pth file runs), directly rather than through a shell script
 // that activates the prefix, from a private directory inside conda-meta
 // rather than from the prefix, with the script kept there rather than in
-// the shared temporary directory, which would come first on sys.path.
+// the shared temporary directory, which would come first on sys.path. A
+// caller that has its own work to finish an environment with (checks, a
+// pip install) passes it as InstallOptions.BeforeCommit: it then runs
+// inside the transaction, under the prefix lock, and its failure or
+// cancellation rolls the environment back; what it runs is the caller's
+// choice, not goomba's.
 //
 // Symlink digests (sha256_in_prefix) are taken once every package is
 // linked, so they do not depend on link timing; a symlink into a package

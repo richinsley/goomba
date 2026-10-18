@@ -68,6 +68,34 @@ type InstallOptions struct {
 	// Cmd is the command line recorded in conda-meta/history ("# cmd:").
 	// Empty records "goomba create -p <prefix>". It must be one line.
 	Cmd string
+	// BeforeCommit, if set, is the caller's own last step of the
+	// transaction, such as checking the interpreter or installing more
+	// packages with pip. It is called once, on the goroutine that called
+	// InstallLock, after every package is linked, byte-compiled and
+	// recorded in conda-meta, the symlinks are verified and the history
+	// entry is written, and before the commit; EventBeforeCommit is
+	// reported just before. prefix is the resolved prefix path InstallLock
+	// installs into; ctx is InstallLock's, cancelled when the caller's is
+	// or when Progress panics.
+	//
+	// Throughout, InstallLock holds the prefix lock and
+	// conda-meta/.goomba-incomplete is present, so CheckComplete reports
+	// ErrPrefixLocked to everyone else, and InstallLock and
+	// RemoveIncomplete for the same prefix fail; the prefix directory is
+	// still mode 0700 (the transaction's), which the user's own processes
+	// can use. What the hook runs is the caller's choice: goomba starts no
+	// process for it. What it writes into the prefix is the caller's
+	// responsibility; goomba neither checks nor records it, but removes it
+	// with everything else on a rollback. The hook must not touch
+	// conda-meta/.goomba-incomplete or remove conda-meta.
+	//
+	// If it returns an error, or ctx is done when it returns, InstallLock
+	// rolls the whole transaction back, as for any other failure, and
+	// returns an error wrapping the hook's error ("goomba: before commit:
+	// ...", so errors.Is and errors.As reach it) or ctx.Err(). If it
+	// panics, the transaction is rolled back and the panic continues on
+	// the caller's goroutine.
+	BeforeCommit func(ctx context.Context, prefix string) error
 }
 
 // EventKind tells what an Event reports.
@@ -113,6 +141,12 @@ const (
 	// was (as for EventSolving); Done and Total are the number of packages
 	// in the solution.
 	EventSolved
+
+	// EventBeforeCommit: InstallLock is about to call
+	// InstallOptions.BeforeCommit (only when it is set); it comes after
+	// EventCompiled and before EventDone. Done and Total are the number of
+	// packages. (It was added last, so the other kinds keep their values.)
+	EventBeforeCommit
 )
 
 // String returns the kind's name, e.g. "fetched".
@@ -134,6 +168,8 @@ func (k EventKind) String() string {
 		return "solving"
 	case EventSolved:
 		return "solved"
+	case EventBeforeCommit:
+		return "before-commit"
 	}
 	return fmt.Sprintf("EventKind(%d)", int(k))
 }
@@ -203,9 +239,12 @@ type Event struct {
 //     track_features and features taken from its own info/index.json
 //     (lockfiles do not carry them), its requested_spec from the last of
 //     lf.Specs naming it; then one conda-meta/history revision with
-//     lf.Specs as "# update specs". The prefix directory gets its final
-//     mode, and removing .goomba-incomplete, the last change, completes
-//     the transaction.
+//     lf.Specs as "# update specs".
+//  10. With opt.BeforeCommit, the caller's hook runs (see InstallOptions),
+//     still under the prefix lock and with .goomba-incomplete present; its
+//     error, a cancellation or a panic rolls everything back. Then the
+//     prefix directory gets its final mode, and removing
+//     .goomba-incomplete, the last change, completes the transaction.
 //
 // Link order: dependencies link before their dependents. Dependency cycles
 // are broken without regard to the order of the input: a platform
@@ -215,7 +254,8 @@ type Event struct {
 // platform or only noarch packages, which real channels contain) are
 // broken where a depth-first search in name order closes them.
 //
-// Byte-compilation is the only process goomba runs: the interpreter of the
+// Byte-compilation is the only process goomba runs itself (a BeforeCommit
+// hook runs whatever the caller chooses): the interpreter of the
 // environment's python package, checked just before to be the file linked
 // from the verified package, as "<prefix>/bin/pythonX.Y -I -S -Wi -u
 // compile_pyc.py" with libmamba's script, so that neither .pth files nor
@@ -507,11 +547,35 @@ func InstallLock(ctx context.Context, prefix string, lf *lock.Lockfile, opt Inst
 	if err = ctx.Err(); err != nil {
 		return err
 	}
+
+	// 10. The caller's step, still under the lock and the marker.
+	if opt.BeforeCommit != nil {
+		emit(Event{Kind: EventBeforeCommit, Done: total, Total: total})
+		if err = ctx.Err(); err != nil {
+			return err
+		}
+		if err = beforeCommit(ctx, opt.BeforeCommit, prefix); err != nil {
+			return err
+		}
+	}
 	if err = tx.commit(); err != nil {
 		return err
 	}
 	committed = true
 	emit(Event{Kind: EventDone, Done: total, Total: total})
+	return nil
+}
+
+// beforeCommit calls the caller's hook and returns its error, or ctx's
+// when ctx is done as it returns, wrapped. A panic in the hook goes on
+// unwinding through InstallLock, whose rollback runs on the way.
+func beforeCommit(ctx context.Context, hook func(context.Context, string) error, prefix string) error {
+	if err := hook(ctx, prefix); err != nil {
+		return fmt.Errorf("goomba: before commit: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("goomba: before commit: %w", err)
+	}
 	return nil
 }
 
