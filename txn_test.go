@@ -281,17 +281,29 @@ func TestInstallPrefixStates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			prefix := filepath.Join(t.TempDir(), "env")
 			tc.setup(t, prefix)
-			before := fmt.Sprint(os.Lstat(prefix))
+			before, err := os.Lstat(prefix)
+			must(t, err)
 			hits := c.totalHits()
-			err := InstallLock(context.Background(), prefix, good, c.options(t))
+			err = InstallLock(context.Background(), prefix, good, c.options(t))
 			if !errors.Is(err, ErrPrefixNotEmpty) {
 				t.Fatalf("err = %v, want ErrPrefixNotEmpty", err)
 			}
 			if c.totalHits() != hits {
 				t.Error("downloaded for an unusable prefix")
 			}
-			if after := fmt.Sprint(os.Lstat(prefix)); after != before {
-				t.Errorf("prefix changed: %s -> %s", before, after)
+			after, err := os.Lstat(prefix)
+			must(t, err)
+			// Reading a directory may update its access time (notably on
+			// macOS). Check the identity and metadata an install could change.
+			if !os.SameFile(before, after) || before.Mode() != after.Mode() || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) {
+				t.Errorf("prefix changed: %v -> %v", before, after)
+			}
+			keep := prefix
+			if tc.name == "not empty" {
+				keep = filepath.Join(prefix, "keep")
+			}
+			if data, err := os.ReadFile(keep); err != nil || string(data) != "mine" {
+				t.Errorf("original contents changed: %q, %v", data, err)
 			}
 		})
 	}

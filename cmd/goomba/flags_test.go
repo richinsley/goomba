@@ -50,7 +50,9 @@ func TestVirtualOverrides(t *testing.T) {
 	// The same lockfile, recording the virtual packages it was solved for.
 	recorded := *lf
 	recorded.Virtual = virtual.ToOverrides(virtual.Defaults(lf.Platform))
-	recorded.Virtual["__unix"] = "0"
+	// __unix exists on both Linux and macOS. Make the recorded set differ
+	// from Defaults on either host; changing __glibc alone misses macOS.
+	recorded.Virtual["__unix"] = "1"
 	for k := range recorded.Virtual {
 		if k == "__glibc" {
 			recorded.Virtual[k] = "2.99"

@@ -11,7 +11,8 @@ supported.
 | --- | --- |
 | linux-64 | Supported and tested end to end, including file-for-file comparisons with micromamba 2.2.0 (contents compared after normalising the install path). |
 | linux-aarch64 and other Linux platforms | Should work; not tested on such hardware. |
-| osx-64, osx-arm64 | Builds and passes `go vet`; never run on a Mac. On osx-arm64, rewritten binaries are re-signed with `/usr/bin/codesign -s - -f`, as conda and mamba do. |
+| osx-arm64 | Builds, passes the Go race-test suite, and completed a live `python=3.12 pip` install on macOS 27.0.1. The installed Python, pip entry point, SSL and SQLite ran. No file-for-file differential with micromamba has been run. Rewritten binaries are re-signed with `/usr/bin/codesign -s - -f`, as conda and mamba do. |
+| osx-64 | Builds and passes `go vet`; not runtime-tested. |
 | win-64 | Not supported. goomba cannot install Python entry points such as `pip.exe` (it has no launcher), and has no prefix lock without `flock`. |
 
 On any platform, `goomba lock --platform P` (or `LockOptions.Platform`)

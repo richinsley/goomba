@@ -32,8 +32,10 @@ two backends, next to micromamba.
 
 goomba creates new environments from conda-forge and other https channels
 on Linux. linux-64 is tested end to end, including file-for-file
-comparisons with micromamba 2.2.0. macOS builds but has not been run on a
-Mac. Windows is not supported.
+comparisons with micromamba 2.2.0. On Apple Silicon, the test suite and a
+live `python=3.12 pip` install have passed; a macOS differential against
+micromamba has not been run. Intel macOS has not been runtime-tested.
+Windows is not supported.
 
 It does not:
 

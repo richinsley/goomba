@@ -20,8 +20,9 @@ prefix that is missing or an empty directory.
 
 These hold on Linux when the goomba process fails or stops, whether it
 returns an error, is cancelled, panics, gets SIGKILL or is OOM-killed,
-while the machine keeps running. macOS runs the same code but has not been
-tested.
+while the machine keeps running. On macOS/arm64, the repository's race-test
+suite and one live Python environment install passed; the Linux
+file-for-file differential has not been run there.
 
 ### A prefix reads as finished only when it is
 

@@ -7,8 +7,9 @@ writes lockfiles, and lists environments. It has no configuration files.
 go install github.com/richinsley/goomba/cmd/goomba@latest
 ```
 
-goomba needs Go 1.24 or later to build. It runs on Linux; macOS builds from
-the same code but has not been tested. See
+goomba needs Go 1.24 or later to build. It runs on Linux; on Apple Silicon,
+a live `python=3.12 pip` install has passed, but broader macOS differential
+testing has not been done. See
 [compatibility.md](compatibility.md#platforms).
 
 ## Commands

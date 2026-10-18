@@ -30,11 +30,17 @@ Some things hold for the whole API:
   `SSL_CERT_DIR` can change on Linux.
 - **No proxy unless you pass one.** The default HTTP client uses no proxy.
   To use one, pass an `*http.Client` whose `Transport` sets `Proxy`.
-- **Concurrency.** Every function is safe for concurrent use. Calls for
-  different prefixes run independently; calls for the same prefix exclude
-  each other through the prefix lock.
-- **Contexts.** Everything that does I/O takes a `context.Context` and stops
-  promptly when it is cancelled.
+- **Concurrency.** The API is safe to call from multiple goroutines. Calls
+  for different prefixes run independently. On supported Unix platforms,
+  installs and recovery for one prefix coordinate through its lock, and
+  `CheckComplete` uses a brief shared lock for a nonempty prefix. Windows
+  has no prefix lock and is not supported (see
+  [compatibility.md](compatibility.md#platforms)).
+- **Contexts.** The long-running `Lock`, `Create` and `InstallLock` calls
+  take a `context.Context` and honor cancellation, including during
+  downloads and installation. `CheckComplete`, `RemoveIncomplete` and the
+  validation functions are synchronous and have no context parameter;
+  recovery cannot be cancelled through this API.
 
 ## Create an environment from specs
 
