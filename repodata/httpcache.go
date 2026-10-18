@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/richinsley/goomba/internal/safedir"
 )
 
 // cacheMagic starts every index cache entry. An entry is the magic line, a
@@ -107,8 +110,12 @@ func newFetcher(s *settings, client *http.Client, pol urlPolicy) *fetcher {
 	return &fetcher{s: s, client: safeClient(client, pol, s.lookup), pol: pol}
 }
 
-// indexCachePath maps a URL to its cache file.
+// indexCachePath maps a URL to its cache file, or returns "" when the
+// source has no disk cache.
 func (f *fetcher) indexCachePath(u string) string {
+	if f.s.cacheDir == "" {
+		return ""
+	}
 	sum := sha256.Sum256([]byte(u))
 	base := "index"
 	if pu, err := url.Parse(u); err == nil {
@@ -116,6 +123,67 @@ func (f *fetcher) indexCachePath(u string) string {
 	}
 	return filepath.Join(f.s.cacheDir, "index", hex.EncodeToString(sum[:16])+"-"+base)
 }
+
+// shardCachePath maps a shard digest to its cache file, or returns "" when
+// the source has no disk cache.
+func (f *fetcher) shardCachePath(want string) string {
+	if f.s.cacheDir == "" {
+		return ""
+	}
+	return filepath.Join(f.s.cacheDir, "shards", want+".msgpack.zst")
+}
+
+// cacheOffHint explains, for an ErrNotCached error, why the source has no
+// disk cache, or returns "".
+func (f *fetcher) cacheOffHint() string {
+	if f.s.cacheOff == nil {
+		return ""
+	}
+	return fmt.Sprintf(" (disk cache disabled: %v)", f.s.cacheOff)
+}
+
+// errNoCache is the (ignored) error of a write to a source without a disk
+// cache.
+var errNoCache = errors.New("repodata: no disk cache")
+
+// readCacheFile reads a cache file of at most limit bytes. A missing file
+// wraps fs.ErrNotExist; one that is not a regular file, is larger than
+// limit or changes while it is opened is an error the caller ignores like a
+// corrupt file. A file that does not belong to the user or that group or
+// others may write is an ErrUnsafeCache error, which callers return: it
+// can only be there if the cache was not private.
+func readCacheFile(p string, limit int64) ([]byte, error) {
+	if p == "" {
+		return nil, fs.ErrNotExist
+	}
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("repodata: cache file %s is not a regular file", p)
+	}
+	if err := safedir.CheckEntry(p, fi); err != nil {
+		return nil, fmt.Errorf("repodata: %w: %w", ErrUnsafeCache, err)
+	}
+	fh, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	if ofi, err := fh.Stat(); err != nil || !os.SameFile(fi, ofi) {
+		return nil, fmt.Errorf("repodata: cache file %s changed while it was opened", p)
+	}
+	data, err := io.ReadAll(io.LimitReader(fh, limit+1))
+	if err == nil && int64(len(data)) > limit {
+		err = ErrTooLarge
+	}
+	return data, err
+}
+
+// maxIndexCacheFile bounds an index cache entry: the largest index
+// download plus the magic and header lines.
+const maxIndexCacheFile = maxIndexDownload + maxCacheHeaderBytes + int64(len(cacheMagic)) + 1
 
 func sanitizeFileName(s string) string {
 	b := []byte(s)
@@ -141,19 +209,27 @@ type freshness struct {
 
 func freshnessPath(entryPath string) string { return entryPath + ".fresh" }
 
-// loadEntry reads and verifies the cache entry for u, or returns nil. A
-// valid freshness sidecar updates its fetch time and ETag.
-func (f *fetcher) loadEntry(u string) *cacheEntry {
+// loadEntry reads and verifies the cache entry for u, or returns nil when
+// there is none or it is invalid. A valid freshness sidecar updates its
+// fetch time and ETag. Its only error is ErrUnsafeCache.
+func (f *fetcher) loadEntry(u string) (*cacheEntry, error) {
 	p := f.indexCachePath(u)
-	data, err := os.ReadFile(p)
+	data, err := readCacheFile(p, maxIndexCacheFile)
 	if err != nil {
-		return nil
+		if errors.Is(err, ErrUnsafeCache) {
+			return nil, err
+		}
+		return nil, nil
 	}
 	e, err := parseCacheEntry(data)
 	if err != nil || e.meta.URLHash != urlHash(u) {
-		return nil
+		return nil, nil
 	}
-	if side, err := os.ReadFile(freshnessPath(p)); err == nil && len(side) <= maxCacheHeaderBytes {
+	side, err := readCacheFile(freshnessPath(p), maxCacheHeaderBytes)
+	if errors.Is(err, ErrUnsafeCache) {
+		return nil, err
+	}
+	if err == nil {
 		var fr freshness
 		dec := json.NewDecoder(bytes.NewReader(side))
 		dec.DisallowUnknownFields()
@@ -164,7 +240,7 @@ func (f *fetcher) loadEntry(u string) *cacheEntry {
 			}
 		}
 	}
-	return e
+	return e, nil
 }
 
 func urlHash(u string) string {
@@ -183,7 +259,11 @@ func (f *fetcher) storeEntry(u string, meta cacheMeta, body []byte) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(f.indexCachePath(u), header, body)
+	p := f.indexCachePath(u)
+	if p == "" {
+		return errNoCache
+	}
+	return writeFileAtomic(p, header, body)
 }
 
 // storeFreshness records a successful revalidation without rewriting the
@@ -193,7 +273,11 @@ func (f *fetcher) storeFreshness(u string, e *cacheEntry) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(freshnessPath(f.indexCachePath(u)), b)
+	p := f.indexCachePath(u)
+	if p == "" {
+		return errNoCache
+	}
+	return writeFileAtomic(freshnessPath(p), b)
 }
 
 // fresh reports whether a cache entry may be used without asking the server.
@@ -208,7 +292,10 @@ func (f *fetcher) fresh(e *cacheEntry) bool {
 // Cache writes are best effort: a read-only or full cache directory does
 // not fail a download that succeeded.
 func (f *fetcher) fetchIndex(ctx context.Context, u string, limit int64) ([]byte, error) {
-	entry := f.loadEntry(u)
+	entry, err := f.loadEntry(u)
+	if err != nil {
+		return nil, err
+	}
 	result := func(e *cacheEntry) ([]byte, error) {
 		if e.meta.Status == http.StatusNotFound {
 			return nil, fmt.Errorf("repodata: %s: %w", redactString(u), ErrNotFound)
@@ -217,7 +304,7 @@ func (f *fetcher) fetchIndex(ctx context.Context, u string, limit int64) ([]byte
 	}
 	if f.s.offline {
 		if entry == nil {
-			return nil, fmt.Errorf("repodata: %s: %w", redactString(u), ErrNotCached)
+			return nil, fmt.Errorf("repodata: %s: %w%s", redactString(u), ErrNotCached, f.cacheOffHint())
 		}
 		return result(entry)
 	}
@@ -279,15 +366,17 @@ func isMissingStatus(code int) bool {
 // shard to the cache is best effort.
 func (f *fetcher) fetchShard(ctx context.Context, u string, sum [32]byte) (data []byte, fromNetwork bool, err error) {
 	want := hex.EncodeToString(sum[:])
-	p := filepath.Join(f.s.cacheDir, "shards", want+".msgpack.zst")
-	if data, err := readFileLimited(p, maxShardDownload); err == nil {
+	p := f.shardCachePath(want)
+	if data, err := readCacheFile(p, maxShardDownload); err == nil {
 		if got := sha256.Sum256(data); got == sum {
 			return data, false, nil
 		}
-		// A corrupt or tampered cache file is ignored and replaced.
+		// A corrupt cache file is ignored and replaced.
+	} else if errors.Is(err, ErrUnsafeCache) {
+		return nil, false, err
 	}
 	if f.s.offline {
-		return nil, false, fmt.Errorf("repodata: shard %s: %w", want, ErrNotCached)
+		return nil, false, fmt.Errorf("repodata: shard %s: %w%s", want, ErrNotCached, f.cacheOffHint())
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
@@ -303,22 +392,10 @@ func (f *fetcher) fetchShard(ctx context.Context, u string, sum [32]byte) (data 
 	if got := sha256.Sum256(body); got != sum {
 		return nil, false, &HashMismatchError{URL: redactString(u), Expected: want, Actual: hex.EncodeToString(got[:])}
 	}
-	_ = writeFileAtomic(p, body)
+	if p != "" {
+		_ = writeFileAtomic(p, body)
+	}
 	return body, true, nil
-}
-
-// readFileLimited reads a cache file of at most limit bytes.
-func readFileLimited(p string, limit int64) ([]byte, error) {
-	fh, err := os.Open(p)
-	if err != nil {
-		return nil, err
-	}
-	defer fh.Close()
-	data, err := io.ReadAll(io.LimitReader(fh, limit+1))
-	if err == nil && int64(len(data)) > limit {
-		err = ErrTooLarge
-	}
-	return data, err
 }
 
 // maxRetryAfter bounds how long a 429 Retry-After may make a request wait.
@@ -417,10 +494,10 @@ func (f *fetcher) do(req *http.Request, limit int64) (*http.Response, []byte, er
 }
 
 // writeFileAtomic writes the concatenation of parts to path through a
-// temporary file in the same directory, fsync and rename, so readers in any
-// process see the old file or the new one, never a partial one. A failed
-// rename is retried once (on Windows a reader holding the old file open
-// makes it fail briefly).
+// temporary file in the same directory (mode 0600, as os.CreateTemp makes
+// it), fsync and rename, so readers in any process see the old file or the
+// new one, never a partial one. A failed rename is retried once (on
+// Windows a reader holding the old file open makes it fail briefly).
 func writeFileAtomic(path string, parts ...[]byte) (err error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

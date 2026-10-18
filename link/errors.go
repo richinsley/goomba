@@ -1,6 +1,9 @@
 package link
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors returned (wrapped) by this package. Test for them with
 // errors.Is.
@@ -14,6 +17,7 @@ var (
 
 	// ErrExists reports a destination that already exists in the prefix.
 	// Link never overwrites; the transaction layer decides about clobbering.
+	// Link's error is an *ExistsError naming the destination.
 	ErrExists = errors.New("destination exists")
 
 	// ErrUnsafePath reports a path that is absolute, contains "..", control
@@ -47,3 +51,30 @@ var (
 	// package.
 	ErrNotInstalled = errors.New("package is not installed")
 )
+
+// ExistsError reports a destination of a package that already exists in
+// the prefix: a path of another package, or another path of the same
+// package that lands there (through a symlink the package itself
+// creates). It unwraps to ErrExists. An ExistsError is immutable once
+// returned.
+type ExistsError struct {
+	// Path is the destination as planned: prefix-relative,
+	// slash-separated, after noarch: python relocation, as PlannedPaths
+	// lists it. The existing file may lie behind a directory symlink on the
+	// way to it.
+	Path string
+	// SamePackage is set when another path of the same package lands
+	// there.
+	SamePackage bool
+}
+
+// Error names the path.
+func (e *ExistsError) Error() string {
+	if e.SamePackage {
+		return fmt.Sprintf("%s: %v (another path of the package lands there)", e.Path, ErrExists)
+	}
+	return fmt.Sprintf("%s: %v", e.Path, ErrExists)
+}
+
+// Unwrap returns ErrExists.
+func (e *ExistsError) Unwrap() error { return ErrExists }

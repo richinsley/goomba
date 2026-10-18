@@ -7,20 +7,23 @@ import (
 	"github.com/richinsley/goomba/link"
 )
 
-// Sentinel errors returned (wrapped) by InstallLock. Test for them with
-// errors.Is. Errors from the packages InstallLock builds on (lock, fetch,
+// Sentinel errors returned (wrapped) by InstallLock, Lock and Create. Test
+// for them with errors.Is. Errors from the packages InstallLock builds on (lock, fetch,
 // archive, link, virtual) are wrapped unchanged, so their sentinels work
 // too: lock.ErrInvalid for a lockfile that fails validation, the fetch
 // error types for downloads, link.ErrLinkScript and link.ErrUnsafePath for
 // refused package contents, context.Canceled after cancellation.
 var (
-	// ErrInvalidOptions reports unusable InstallOptions: no PkgsDir, a
-	// PkgsDir inside the prefix, a negative Concurrency, a malformed virtual
-	// package record or a history command with a line break.
-	ErrInvalidOptions = errors.New("invalid install options")
+	// ErrInvalidOptions reports unusable InstallOptions or LockOptions: no
+	// PkgsDir, a PkgsDir inside the prefix, a negative Concurrency, a
+	// malformed virtual package record or a history command with a line
+	// break; no specs, a spec that does not parse, no channels, a channel
+	// that does not resolve to one https URL, no RepodataDir, an unknown
+	// platform, or another platform than the host's without Virtual.
+	ErrInvalidOptions = errors.New("invalid options")
 
 	// ErrPlatform reports a lockfile made for another platform than the
-	// host's.
+	// host's, or a Create for another platform.
 	ErrPlatform = errors.New("lockfile platform is not the host platform")
 
 	// ErrVirtual reports a locked package whose dependency on, or
@@ -32,9 +35,12 @@ var (
 	// directory.
 	ErrPrefixNotEmpty = errors.New("prefix exists and is not an empty directory")
 
-	// ErrUnsafePrefix reports an existing prefix directory that another
-	// user could change: one that does not belong to the current user or
-	// that group or others may write (on Unix).
+	// ErrUnsafePrefix reports a prefix that another user could change or
+	// redirect (on Unix): an existing prefix directory that does not belong
+	// to the current user or that group or others may write, a directory on
+	// the way to it that another user owns or may write (unless sticky), or
+	// a symlink on the way to it in a directory others may write (in a
+	// sticky one: a symlink of another user's).
 	ErrUnsafePrefix = errors.New("prefix is not private to the current user")
 
 	// ErrPrefixLocked reports a prefix locked by another installation, in

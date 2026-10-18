@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/richinsley/goomba/internal/netguard"
 	"github.com/richinsley/goomba/record"
 )
 
@@ -191,6 +193,143 @@ func FuzzResolveInside(f *testing.F) {
 				if rel, err := filepath.Rel(realRoot, real); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 					t.Fatalf("%s resolves to %s outside %s, accepted", n, real, realRoot)
 				}
+			}
+		}
+	})
+}
+
+// FuzzParseChannels: channel arguments (one per line, the last line the
+// channel alias) never panic; accepted ones resolve to distinct https
+// channel URLs without credentials or platform filters, deterministically.
+// FuzzChannelSecrets checks that errors never show credentials.
+func FuzzParseChannels(f *testing.F) {
+	for _, seed := range []string{
+		"conda-forge\nhttps://conda.anaconda.org",
+		"conda-forge\nbioconda\n",
+		"https://conda.anaconda.org/conda-forge\nconda-forge\n",
+		"pkgs/main\npkgs/r\nhttps://repo.example.com",
+		"conda-forge/label/dev\n",
+		"conda-forge/linux-64\n",
+		"conda-forge[linux-64,noarch]\n",
+		"defaults\n",
+		"https://user:pw@example.com/c\n",
+		"https://example.com/t/pw-1/c\n",
+		"https://example.com/%74/pw-1/c\n",
+		"example.com/t/pw-1/c\n",
+		"c\nhttps://u:pw@example.com",
+		"http://127.0.0.1:8000/c\n",
+		"file:///tmp/c\n",
+		"/tmp/c\n",
+		"https://[fd00::1]:8443/c\nhttps://[FD00::1]:8443/c/\n",
+		"HTTPS://Example.COM:443/c\nhttps://example.com/c\n",
+		"https://example.com/c?x=1\n",
+		"https://example.com/c#f\n",
+		"a\u202eb\n",
+		"\x1b[2J\n",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, in string) {
+		if len(in) > 512 {
+			return // long arguments add nothing but slow minimization
+		}
+		lines := strings.Split(in, "\n")
+		args, alias := lines[:len(lines)-1], lines[len(lines)-1]
+		if len(args) == 0 {
+			return
+		}
+		opt := LockOptions{Specs: []string{"python"}, Channels: args, ChannelAlias: alias, RepodataDir: "x", Platform: "linux-64", Virtual: []*record.PackageRecord{}}
+		r, err := newLockRequest(opt)
+		r2, err2 := newLockRequest(opt)
+		if (err == nil) != (err2 == nil) || err != nil && err.Error() != err2.Error() {
+			t.Fatalf("not deterministic: %v / %v", err, err2)
+		}
+		if err != nil {
+			if !errors.Is(err, ErrInvalidOptions) {
+				t.Fatalf("not ErrInvalidOptions: %v", err)
+			}
+			return
+		}
+		if len(r.channels) != len(args) || !slices.Equal(r.channels, r2.channels) {
+			t.Fatalf("channels %q for %q", r.channels, args)
+		}
+		keys := map[string]bool{}
+		for _, c := range r.channels {
+			u, err := url.Parse(c)
+			if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+				t.Fatalf("channel %q", c)
+			}
+			if netguard.HasTokenSegment(u.Path) || strings.HasSuffix(c, "/") {
+				t.Fatalf("channel %q", c)
+			}
+			if keys[channelKey(c)] {
+				t.Fatalf("channel %q twice in %q", c, r.channels)
+			}
+			keys[channelKey(c)] = true
+		}
+	})
+}
+
+// secretMarker stands for a password or token in FuzzChannelSecrets.
+const secretMarker = "pw-Zq9"
+
+// FuzzChannelSecrets (review round 1, N1): an independent oracle for
+// redaction. The secret marker is put where credentials go, in several
+// spellings, around fuzzed text that does not contain it; whatever the
+// result, no error may show the marker, and no accepted channel may hold
+// it.
+func FuzzChannelSecrets(f *testing.F) {
+	for _, seed := range []struct {
+		a, b, alias string
+		kind        uint8
+	}{
+		{"https://user:", "example.com/c", "", 0},
+		{"https://", "example.com/c", "", 0},
+		{"https:/user:", "example.com/c", "", 0},
+		{"https:", "example.com:99999/c", "", 0},
+		{"https:///user:", "example.com/c", "", 0},
+		{"user:", "example.com/c", "", 0},
+		{"https://user:se/", "example.com/c", "", 0},
+		{"https://example.com", "/c", "", 1},
+		{"https://example.com", "/c", "", 2},
+		{"", "/c", "", 3},
+		{"conda-forge", "", "https://user:", 4},
+		{"c", "", "https://example.com", 5},
+		{" https://user:", "%zz@example.com/c", "", 0},
+		{"https://[user:", "example.com/c", "", 0},
+	} {
+		f.Add(seed.a, seed.b, seed.alias, seed.kind)
+	}
+	f.Fuzz(func(t *testing.T, a, b, alias string, kind uint8) {
+		if len(a)+len(b)+len(alias) > 512 || strings.Contains(a+"\x00"+b+"\x00"+alias, secretMarker) {
+			return
+		}
+		arg := a
+		switch kind % 6 {
+		case 0:
+			arg = a + secretMarker + "@" + b
+		case 1:
+			arg = a + "/t/" + secretMarker + b
+		case 2:
+			arg = a + "/%74/" + secretMarker + b
+		case 3:
+			arg = "t/" + secretMarker + b
+		case 4:
+			alias = alias + secretMarker + "@" + b
+		case 5:
+			alias = alias + "/t/" + secretMarker + b
+		}
+		opt := LockOptions{Specs: []string{"python"}, Channels: []string{arg}, ChannelAlias: alias, RepodataDir: "x", Platform: "linux-64", Virtual: []*record.PackageRecord{}}
+		r, err := newLockRequest(opt)
+		if err != nil {
+			if strings.Contains(err.Error(), secretMarker) {
+				t.Fatalf("channel %q, alias %q: the error shows the secret: %v", arg, alias, err)
+			}
+			return
+		}
+		for _, c := range r.channels {
+			if strings.Contains(c, secretMarker) {
+				t.Fatalf("channel %q, alias %q accepted as %q", arg, alias, c)
 			}
 		}
 	})

@@ -19,6 +19,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/richinsley/goomba/internal/netguard"
 )
 
 const (
@@ -714,14 +716,20 @@ func TestFetchRequestsIdentityEncoding(t *testing.T) {
 }
 
 func TestFetchDefaultClient(t *testing.T) {
-	// The default client is built once, uses no proxy, and serves https.
+	// The default client is built once per network policy, and its
+	// transport is guarded (netguard checks the proxy-less default
+	// transport itself). Policies never share a client, so a connection
+	// dialled for a private mirror is never reused for a public URL.
 	c := &Cache{Dir: t.TempDir()}
-	a, b := c.httpClient(), c.httpClient()
-	if a.Transport != b.Transport || a.Transport == nil {
-		t.Fatal("default transport not shared")
+	a, b := c.httpClient(netguard.Policy{}), c.httpClient(netguard.Policy{})
+	if a != b || a.Transport == nil {
+		t.Fatal("default client not shared")
 	}
-	if tr := a.Transport.(*http.Transport); tr.Proxy != nil || tr.TLSClientConfig.MinVersion == 0 {
-		t.Fatal("default transport reads a proxy or allows old TLS")
+	if _, ok := a.Transport.(*http.Transport); ok {
+		t.Fatal("default transport is not guarded")
+	}
+	if p := c.httpClient(netguard.Policy{PrivateHosts: true}); p == a || p.Transport == a.Transport {
+		t.Fatal("two policies share a client")
 	}
 }
 

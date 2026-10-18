@@ -139,13 +139,6 @@ func chgrpOther(t *testing.T, p string) {
 	t.Skip("the user belongs to no group but its own")
 }
 
-func must(t testing.TB, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestCachePrivateGroup: a group-writable cache directory, or directory
 // above it, is accepted when it belongs to the user and to the user's
 // private group (gid == uid == egid), and refused with any other group.
@@ -173,18 +166,30 @@ func TestCachePrivateGroup(t *testing.T) {
 }
 
 // TestCacheResolvedOnce: a Cache resolves Dir once; re-pointing a symlink
-// on the way to it afterwards (here one in a directory others can write)
-// changes nothing for that Cache (review round 2, S1).
+// on the way to it afterwards changes nothing for that Cache (review round
+// 2, S1). A symlink in a directory others can write is not followed at all
+// (WP8b review round 1, S1).
 func TestCacheResolvedOnce(t *testing.T) {
 	s := newServer(t, false)
 	url := s.put("/noarch/"+wheelFn, wheelBytes(t))
 	root := t.TempDir()
 	private := filepath.Join(root, "private")
 	must(t, os.Mkdir(private, 0o755))
-	shared := filepath.Join(root, "shared")
-	must(t, os.Mkdir(shared, 0o777))
-	must(t, os.Chmod(shared, 0o777))
-	link := filepath.Join(shared, "cache")
+	if os.Geteuid() != 0 {
+		shared := filepath.Join(root, "shared")
+		must(t, os.Mkdir(shared, 0o777))
+		must(t, os.Chmod(shared, 0o777))
+		bad := filepath.Join(shared, "cache")
+		must(t, os.Symlink(private, bad))
+		c := &Cache{Dir: bad, Client: s.Client(), AllowHTTP: true}
+		if _, err := c.Extracted(context.Background(), wheelRecord(url)); !errors.Is(err, ErrUnsafeCache) {
+			t.Fatalf("symlink in a world-writable directory: %v, want ErrUnsafeCache", err)
+		}
+		if ents, _ := os.ReadDir(private); len(ents) != 0 {
+			t.Fatalf("the symlink was followed: %v", ents)
+		}
+	}
+	link := filepath.Join(root, "cache")
 	must(t, os.Symlink(private, link))
 	c := &Cache{Dir: link, Client: s.Client(), AllowHTTP: true}
 	p, err := c.Extracted(context.Background(), wheelRecord(url))

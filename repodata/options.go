@@ -4,9 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/richinsley/goomba/internal/safedir"
 )
 
 // DefaultConcurrency is the number of shards a ShardedChannel downloads in
@@ -49,12 +53,33 @@ type Options struct {
 	// If its Transport is an *http.Transport (or nil), a clone is used whose
 	// connections are checked against the channel's URL policy on the
 	// address actually dialled (only the dial to the proxy of a request the
-	// transport sends through that proxy is exempt);
+	// transport sends through that proxy is exempt, and the proxy resolves
+	// the target's name, so only the host as written is checked then);
 	// any other http.RoundTripper is used as is, and its owner is
 	// responsible for network policy.
 	Client *http.Client
 	// CacheDir holds cached index files and shards. It is required, also
-	// when Offline is set. Several processes may share it.
+	// when Offline is set. Several processes of the same user may share
+	// it. The cache supplies the sha256 of every package, so it must be
+	// private to the user: each constructor creates CacheDir if missing,
+	// resolves its symlinks once and works only in the resolved directory,
+	// and refuses (ErrUnsafeCache), on Unix, a directory that another user
+	// could change, in the manner of OpenSSH's StrictModes: it must belong
+	// to the user and not be writable by group or others, and every
+	// directory above it must belong to root or the user and not be
+	// writable by group or others unless sticky (a directory of the user's
+	// private group, gid equal to the uid and the effective gid, may be
+	// group-writable). Its index and shards directories, made 0755 less the
+	// umask, and every cache file read must belong to the user and not be
+	// writable by group or others either; the private-group exception does
+	// not apply to them (goomba makes them without group write). A file or
+	// symlink where the index or shards directory belongs is refused
+	// (ErrUnsafeCache) and left alone: nothing in CacheDir is ever removed.
+	// Cache files are written mode 0600 (through a temporary file and a
+	// rename). A CacheDir that cannot be created or resolved at all, for
+	// example below a regular file, leaves the source without a disk cache:
+	// everything is downloaded and nothing stored, as when the directory is
+	// read-only, and offline the ErrNotCached error says why.
 	CacheDir string
 	// Offline forbids network access: only cached files are used, whatever
 	// their age, and a missing file is ErrNotCached.
@@ -102,7 +127,8 @@ const DefaultMaxRetained = 2 << 30
 // settings is the validated form of Options.
 type settings struct {
 	client      *http.Client // as given; fetchers wrap it with the channel's URL policy
-	cacheDir    string
+	cacheDir    string       // resolved; "" when the directory is unusable (no disk cache)
+	cacheOff    error        // why there is no disk cache, when cacheDir is ""
 	offline     bool
 	maxAge      time.Duration
 	subdirs     []string // platform first, then noarch
@@ -136,7 +162,6 @@ func (o Options) settings() (*settings, error) {
 	}
 	s := &settings{
 		client:      o.Client,
-		cacheDir:    o.CacheDir,
 		offline:     o.Offline,
 		maxAge:      o.MaxAge,
 		concurrency: o.Concurrency,
@@ -162,7 +187,40 @@ func (o Options) settings() (*settings, error) {
 		}
 		s.python = pm
 	}
+	dir, off, err := openCacheDir(o.CacheDir)
+	if err != nil {
+		return nil, err
+	}
+	s.cacheDir, s.cacheOff = dir, off
 	return s, nil
+}
+
+// openCacheDir resolves the cache directory once (creating it if missing)
+// and checks it and its subdirectories with internal/safedir. A directory
+// another user could change, or a non-directory where a subdirectory
+// belongs (left alone), is an ErrUnsafeCache error. One that cannot be
+// created or resolved gives "" and the reason (off): the source runs
+// without a disk cache.
+func openCacheDir(dir string) (real string, off, err error) {
+	real, err = safedir.Resolve(dir)
+	if errors.Is(err, safedir.ErrUnsafe) {
+		return "", nil, fmt.Errorf("repodata: cache directory: %w: %w", ErrUnsafeCache, err)
+	}
+	if err != nil {
+		return "", err, nil
+	}
+	subs := []string{filepath.Join(real, "index"), filepath.Join(real, "shards")}
+	for _, sub := range subs { // refuse before creating either
+		if fi, err := os.Lstat(sub); err == nil && !fi.IsDir() {
+			return "", nil, fmt.Errorf("repodata: cache directory: %w: %s exists and is not a directory (it is left alone)", ErrUnsafeCache, sub)
+		}
+	}
+	for _, sub := range subs {
+		if err := safedir.EnsureDir(sub); errors.Is(err, safedir.ErrUnsafe) {
+			return "", nil, fmt.Errorf("repodata: cache directory: %w: %w", ErrUnsafeCache, err)
+		}
+	}
+	return real, nil, nil
 }
 
 // checkPlatform accepts conda subdir names such as "linux-64", "osx-arm64"

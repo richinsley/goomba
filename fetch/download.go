@@ -6,18 +6,18 @@ package fetch
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/richinsley/goomba/internal/netguard"
 )
 
 const (
@@ -48,40 +48,27 @@ func isTransient(err error) bool {
 	return errors.As(err, &he) && he.Temporary()
 }
 
-func newDefaultClient() *http.Client {
-	return &http.Client{Transport: &http.Transport{
-		Proxy: nil, // never from the environment
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          64,
-		MaxIdleConnsPerHost:   16,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   30 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
-		ExpectContinueTimeout: time.Second,
-		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
-	}}
-}
-
-// httpClient returns a client that refuses redirects to URLs the cache
-// would not fetch directly and never sends a Referer, which could carry a
-// channel token, to the redirect target. The caller's Client is copied, not
-// modified.
-func (c *Cache) httpClient() *http.Client {
-	base := c.Client
-	if base == nil {
-		c.mu.Lock()
-		if c.client == nil {
-			c.client = newDefaultClient()
-		}
-		base = c.client
-		c.mu.Unlock()
+// httpClient returns the client for downloads that start at a URL with
+// policy pol (internal/netguard): its transport connects only to addresses
+// the policy allows (a URL on a public host never reaches a loopback,
+// private or link-local address, also not through a DNS answer), and its
+// redirects must pass the policy, never downgrade to http, stay within the
+// URLs the cache would fetch directly, and carry no Referer, which could
+// hold a channel token. The caller's Client is copied, not modified; nil
+// selects netguard's default transport (no proxy). One client is built per
+// policy and reused, so connections dialled under one policy are never
+// reused under another.
+func (c *Cache) httpClient(pol netguard.Policy) *http.Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if cl, ok := c.clients[pol]; ok {
+		return cl
 	}
-	cl := *base
-	next := base.CheckRedirect
+	var cl http.Client
+	if c.Client != nil {
+		cl = *c.Client
+	}
+	next := cl.CheckRedirect
 	cl.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		req.Header.Del("Referer")
 		if len(via) >= maxRedirects {
@@ -95,7 +82,16 @@ func (c *Cache) httpClient() *http.Client {
 		}
 		return nil
 	}
-	return &cl
+	base := &cl
+	if c.Client == nil {
+		base.Transport = netguard.DefaultTransport()
+	}
+	out := netguard.Client(base, pol, c.lookup)
+	if c.clients == nil {
+		c.clients = map[netguard.Policy]*http.Client{}
+	}
+	c.clients[pol] = out
+	return out
 }
 
 func (c *Cache) retries() int {
@@ -125,7 +121,8 @@ func (c *Cache) backoff(attempt int) time.Duration {
 // download fetches u into <dir>/<fn>, retrying transient failures, and
 // returns the verified file, still open.
 func (c *Cache) download(ctx context.Context, u *url.URL, dir, fn, sha string, size int64, key []byte) (*archiveFile, error) {
-	client := c.httpClient()
+	pol, _ := netguard.For(u) // parseURL checked u against this policy
+	client := c.httpClient(pol)
 	for attempt := 0; ; attempt++ {
 		f, err := c.downloadOnce(ctx, client, u, dir, fn, sha, size, key)
 		if err == nil {
@@ -202,7 +199,15 @@ func (c *Cache) downloadOnce(ctx context.Context, client *http.Client, u *url.UR
 	req.Header.Set("User-Agent", "goomba")
 	resp, err := client.Do(req)
 	if err != nil {
-		if errors.Is(err, ErrInsecureURL) || ctx.Err() != nil {
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		if errors.Is(err, netguard.ErrUnsupportedURL) && !errors.Is(err, ErrInsecureURL) {
+			// A redirect or a connection address the network policy
+			// refuses: never retried.
+			return nil, fmt.Errorf("%w: %w", ErrInsecureURL, err)
+		}
+		if errors.Is(err, ErrInsecureURL) {
 			return nil, err
 		}
 		if cause := context.Cause(rctx); errors.Is(cause, errStalled) {

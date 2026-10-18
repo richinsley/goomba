@@ -1,12 +1,7 @@
 package goomba
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,12 +9,7 @@ import (
 	"strings"
 
 	"github.com/richinsley/goomba/link"
-	"github.com/richinsley/goomba/record"
 )
-
-// maxMetadataSize bounds a package metadata file read into memory, as in
-// package link.
-const maxMetadataSize = 64 << 20
 
 // claimKind is what a package puts at a path.
 type claimKind uint8
@@ -86,61 +76,19 @@ func (cl claim) otherFile(pkg int) int {
 // claims maps prefix-relative paths to the packages that install them.
 type claims map[string]claim
 
-// packageDests lists the paths the extracted package in pkgDir will create
-// when linked with python (nil when the environment has no python): every
-// entry of info/paths.json (or the legacy info/files), relocated for noarch:
-// python, the .pyc files of its site-packages sources and its entry points.
-// It reads the same metadata link.Link reads; link validates it in full.
-func packageDests(pkgDir string, rec *record.PackageRecord, py *link.PythonInfo) ([]dest, error) {
-	noarch := rec.Noarch
-	if noarch == "" {
-		var err error
-		if noarch, err = indexNoarch(pkgDir); err != nil {
-			return nil, err
-		}
-	}
-	if noarch == "python" && py == nil {
-		return nil, fmt.Errorf("goomba: %s: %w: python is not in the lockfile", rec.Dist(), link.ErrNoPython)
-	}
-	entries, err := packagePaths(pkgDir)
-	if err != nil {
-		return nil, fmt.Errorf("goomba: %s: %w", rec.Dist(), err)
-	}
-	out := make([]dest, 0, len(entries))
-	var pyc []dest
-	for _, e := range entries {
-		p, kind := e.Path, claimFile
-		if e.PathType == link.PathDirectory {
+// plannedDests turns the paths link.PlannedPaths lists for a package into
+// claims: directories may be shared, everything else (files, symlinks,
+// .pyc files, entry points) belongs to one package.
+func plannedDests(planned []link.PlannedPath) []dest {
+	out := make([]dest, len(planned))
+	for i, p := range planned {
+		kind := claimFile
+		if p.PathType == link.PathDirectory {
 			kind = claimDir
 		}
-		if noarch == "python" {
-			p = link.NoarchTargetPath(p, py.SitePackagesPath, py.BinDir)
-			if isPycCandidate(e.Path) {
-				pyc = append(pyc, dest{path: link.PycPath(p, py.Version), kind: claimFile})
-			}
-		}
-		out = append(out, dest{path: p, kind: kind})
+		out[i] = dest{path: p.Path, kind: kind}
 	}
-	out = append(out, pyc...)
-	for _, d := range out {
-		if !cleanRelPath(d.path) {
-			return nil, fmt.Errorf("goomba: %s: %w: %q is not a clean relative path", rec.Dist(), link.ErrUnsafePath, d.path)
-		}
-	}
-	if noarch == "python" {
-		eps, err := entryPoints(pkgDir)
-		if err != nil {
-			return nil, fmt.Errorf("goomba: %s: %w", rec.Dist(), err)
-		}
-		for _, def := range eps {
-			ep, err := link.ParseEntryPoint(def)
-			if err != nil {
-				return nil, fmt.Errorf("goomba: %s: %w", rec.Dist(), err)
-			}
-			out = append(out, dest{path: py.BinDir + "/" + ep.Command, kind: claimFile})
-		}
-	}
-	return out, nil
+	return out
 }
 
 // add records pkg's dests and returns a *ClobberError naming the first
@@ -213,6 +161,20 @@ func (c claims) owner(prefix, p string, pkg int) int {
 	return -1
 }
 
+// attributeExistsError turns err, a link.ErrExists from linking package
+// pkg, into a *ClobberError naming the package that owns the path: the
+// path the *link.ExistsError names, or failing that any existing path of
+// pkg's (attributeExists). It returns nil when no other package owns one.
+func (c claims) attributeExistsError(prefix string, pkg int, err error, dests []dest, dists []string) *ClobberError {
+	var ee *link.ExistsError
+	if errors.As(err, &ee) && !ee.SamePackage {
+		if other := c.owner(prefix, ee.Path, pkg); other >= 0 {
+			return &ClobberError{Path: ee.Path, Packages: [2]string{dists[other], dists[pkg]}}
+		}
+	}
+	return c.attributeExists(prefix, pkg, dests, dists)
+}
+
 // attributeExists turns a link.ErrExists from linking package pkg into a
 // *ClobberError naming the package that owns the path, when one does.
 func (c claims) attributeExists(prefix string, pkg int, dests []dest, dists []string) *ClobberError {
@@ -228,141 +190,4 @@ func (c claims) attributeExists(prefix string, pkg int, dests []dest, dists []st
 		}
 	}
 	return nil
-}
-
-// cleanRelPath reports whether p is a non-empty relative slash path without
-// empty, "." or ".." components. link refuses such paths too (and more);
-// the check here keeps the claim bookkeeping well defined.
-func cleanRelPath(p string) bool {
-	if p == "" || p[0] == '/' {
-		return false
-	}
-	for c := range strings.SplitSeq(p, "/") {
-		if c == "" || c == "." || c == ".." {
-			return false
-		}
-	}
-	return true
-}
-
-// isPycCandidate is libmamba's "^site-packages[/\\][^\t\n\r\f\v]+\.py$",
-// the rule link uses to record .pyc files.
-func isPycCandidate(p string) bool {
-	rest, ok := strings.CutPrefix(p, "site-packages/")
-	if !ok {
-		rest, ok = strings.CutPrefix(p, `site-packages\`)
-	}
-	if !ok || !strings.HasSuffix(rest, ".py") || len(rest) < len(".py")+1 {
-		return false
-	}
-	return !strings.ContainsAny(rest, "\t\n\r\f\v")
-}
-
-// readPkgFile reads info/<name> from an extracted package, refusing
-// symlinks and files over maxMetadataSize. A missing file wraps
-// fs.ErrNotExist.
-func readPkgFile(pkgDir, name string) ([]byte, error) {
-	info := filepath.Join(pkgDir, "info")
-	fi, err := os.Lstat(info)
-	if err != nil {
-		return nil, err
-	}
-	if !fi.IsDir() {
-		return nil, fmt.Errorf("%w: info is not a directory", link.ErrInvalidPackage)
-	}
-	p := filepath.Join(info, name)
-	if fi, err = os.Lstat(p); err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, fmt.Errorf("%w: info/%s is not a regular file", link.ErrInvalidPackage, name)
-	}
-	f, err := os.Open(p)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxMetadataSize+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > maxMetadataSize {
-		return nil, fmt.Errorf("%w: info/%s is larger than %d bytes", link.ErrInvalidPackage, name, maxMetadataSize)
-	}
-	return data, nil
-}
-
-// indexNoarch returns the noarch kind from info/index.json ("" if absent),
-// mapping the legacy noarch: true to "generic" as link does.
-func indexNoarch(pkgDir string) (string, error) {
-	data, err := readPkgFile(pkgDir, "index.json")
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	var idx struct {
-		Noarch json.RawMessage `json:"noarch"`
-	}
-	if err := json.Unmarshal(data, &idx); err != nil {
-		return "", fmt.Errorf("%w: index.json: %v", link.ErrInvalidPackage, err)
-	}
-	var s string
-	var b bool
-	switch {
-	case len(idx.Noarch) == 0:
-	case json.Unmarshal(idx.Noarch, &s) == nil:
-		return s, nil
-	case json.Unmarshal(idx.Noarch, &b) == nil:
-		if b {
-			return "generic", nil
-		}
-	}
-	return "", nil
-}
-
-// packagePaths reads info/paths.json, or the legacy info/files list.
-func packagePaths(pkgDir string) ([]link.PathEntry, error) {
-	data, err := readPkgFile(pkgDir, "paths.json")
-	if err == nil {
-		return link.ParsePathsJSON(data)
-	}
-	if !errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("read paths.json: %w", err)
-	}
-	if data, err = readPkgFile(pkgDir, "files"); err != nil {
-		return nil, fmt.Errorf("read info/files: %w", err)
-	}
-	// The same line rules as link's legacy reader.
-	var out []link.PathEntry
-	for line := range bytes.SplitSeq(data, []byte{'\n'}) {
-		if l := strings.Trim(string(line), " \t\n\v\f\r"); l != "" {
-			out = append(out, link.PathEntry{Path: l, PathType: link.PathHardlink})
-		}
-	}
-	return out, nil
-}
-
-// entryPoints returns noarch.entry_points from info/link.json.
-func entryPoints(pkgDir string) ([]string, error) {
-	data, err := readPkgFile(pkgDir, "link.json")
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var lj struct {
-		Noarch *struct {
-			EntryPoints []string `json:"entry_points"`
-		} `json:"noarch"`
-	}
-	if err := json.Unmarshal(data, &lj); err != nil {
-		return nil, fmt.Errorf("%w: link.json: %v", link.ErrInvalidPackage, err)
-	}
-	if lj.Noarch == nil {
-		return nil, nil
-	}
-	return lj.Noarch.EntryPoints, nil
 }

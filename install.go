@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/richinsley/goomba/fetch"
+	"github.com/richinsley/goomba/internal/safedir"
 	"github.com/richinsley/goomba/link"
 	"github.com/richinsley/goomba/lock"
 	"github.com/richinsley/goomba/record"
@@ -71,7 +73,7 @@ type InstallOptions struct {
 // EventKind tells what an Event reports.
 type EventKind int
 
-// Event kinds, in the order a transaction emits them.
+// Event kinds, in the order an installation emits them.
 const (
 	// EventFetched: a package archive is in the cache, verified and
 	// extracted. Done counts the packages fetched so far, Total all of
@@ -90,6 +92,27 @@ const (
 	// EventDone: the environment is complete. Done and Total are the number
 	// of packages.
 	EventDone
+
+	// The kinds below report Lock (and the resolve step of Create), which
+	// runs before an installation: EventRepodata for each channel, then
+	// EventSolving, again both for a retry, then EventSolved.
+
+	// EventRepodata: the index of a channel is open (its shard indexes, or
+	// its full repodata.json, for the platform and noarch). Channel is its
+	// URL and Prefilter the python-minor prefilter it was loaded with;
+	// Done counts the channels open so far in this attempt, Total all of
+	// them.
+	EventRepodata
+	// EventSolving: a solve starts. Prefilter is the python minor series
+	// ("3.11") whose incompatible records were dropped while loading, or
+	// "" for none; Done is the attempt, 1, or 2 for the retry without the
+	// prefilter after the first was unsolvable; Total is the number of
+	// attempts the request may take (2 with a prefilter, else 1).
+	EventSolving
+	// EventSolved: the solve succeeded. Prefilter tells which attempt it
+	// was (as for EventSolving); Done and Total are the number of packages
+	// in the solution.
+	EventSolved
 )
 
 // String returns the kind's name, e.g. "fetched".
@@ -105,17 +128,29 @@ func (k EventKind) String() string {
 		return "compiled"
 	case EventDone:
 		return "done"
+	case EventRepodata:
+		return "repodata"
+	case EventSolving:
+		return "solving"
+	case EventSolved:
+		return "solved"
 	}
 	return fmt.Sprintf("EventKind(%d)", int(k))
 }
 
-// Event reports progress of InstallLock. It is a plain value.
+// Event reports progress of InstallLock, Lock or Create. It is a plain
+// value.
 type Event struct {
 	// Kind is what happened.
 	Kind EventKind
 	// Package is the package concerned, "name-version-build", or "" for
 	// events about the whole transaction.
 	Package string
+	// Channel is the channel URL of an EventRepodata, otherwise "".
+	Channel string
+	// Prefilter is the python-minor prefilter of an EventRepodata,
+	// EventSolving or EventSolved ("3.11", or "" for none), otherwise "".
+	Prefilter string
 	// Done and Total measure progress; their unit depends on Kind.
 	Done, Total int64
 }
@@ -142,12 +177,15 @@ type Event struct {
 //     compared: two packages installing the same path, or one installing
 //     below the other's file or symlink, is a *ClobberError naming both
 //     (micromamba warns and lets the later one win).
-//  6. The prefix, resolved once at the start (symlinks on the way to it
-//     are followed then and never again; the resolved path is what is
-//     installed into and written into files), is created (missing parents
-//     0755), locked for the rest of the transaction (flock on Unix),
-//     checked to belong to the user and not be writable by others, as are
-//     the directories above it unless sticky (ErrUnsafePrefix), and
+//  6. The prefix, resolved once at the start, one component at a time
+//     (package internal/safedir: symlinks on the way to it are followed
+//     then and never again, and only from directories nobody else can
+//     change; in a sticky shared directory such as /tmp, only the user's or
+//     root's symlinks; the resolved path is what is installed into and
+//     written into files), is created (missing parents 0755), locked for
+//     the rest of the transaction (flock on Unix), checked to belong to the
+//     user and not be writable by others, as are the directories on the way
+//     to it unless sticky (ErrUnsafePrefix), and
 //     conda-meta/.goomba-incomplete is written into it. The prefix
 //     directory stays 0700 until the transaction ends, so nobody else can
 //     reach what it holds while it is filled; then it becomes 0755 (an
@@ -189,6 +227,26 @@ type Event struct {
 // (openat/unlinkat on Unix), so renaming the prefix or a directory above
 // it cannot redirect the removal to other data.
 //
+// Errors come in this order, so callers that branch on them see the first
+// condition that applies: a nil or invalid lockfile (lock.ErrInvalid); a
+// lockfile for another platform (ErrPlatform); unusable options
+// (ErrInvalidOptions: no PkgsDir, a negative Concurrency, a line break in
+// Cmd); the prefix's resolution (ErrUnsafePrefix for an unsafe directory on
+// the way to it, the existing prefix directory included when it belongs to
+// another user than root and the current user, or I/O errors such as
+// ENOTDIR or, for a dangling symlink, EEXIST); a PkgsDir inside the prefix
+// (ErrInvalidOptions); unmet virtual packages (*VirtualError) or a
+// malformed virtual record (ErrInvalidOptions); an unparsable dependency;
+// a prefix that is not an empty directory (ErrPrefixNotEmpty); the
+// downloads (fetch's errors, fetch.ErrUnsafeCache for an unsafe package
+// cache); clobbering paths (*ClobberError); then, while taking the prefix:
+// ErrUnsafePrefix (an existing empty prefix that is not the user's own
+// private directory, or a path that changed), ErrPrefixLocked,
+// ErrPrefixNotEmpty (filled meanwhile). An existing, non-empty prefix of
+// another user is therefore ErrUnsafePrefix, not ErrPrefixNotEmpty.
+// ValidateInstall checks the conditions that need no lockfile, in the same
+// order, without doing any work.
+//
 // InstallLock is safe for concurrent use with different prefixes; calls
 // for the same prefix exclude each other through the prefix lock (the
 // second fails with ErrPrefixLocked or ErrPrefixNotEmpty).
@@ -205,44 +263,15 @@ func InstallLock(ctx context.Context, prefix string, lf *lock.Lockfile, opt Inst
 	if host := virtual.HostPlatform(); lf.Platform != host {
 		return fmt.Errorf("goomba: %w: lockfile is for %s, host is %q", ErrPlatform, lf.Platform, host)
 	}
-	if opt.PkgsDir == "" {
-		return fmt.Errorf("goomba: %w: PkgsDir is required", ErrInvalidOptions)
-	}
-	if opt.Concurrency < 0 {
-		return fmt.Errorf("goomba: %w: negative Concurrency %d", ErrInvalidOptions, opt.Concurrency)
-	}
-	if strings.ContainsAny(opt.Cmd, "\r\n") {
-		return fmt.Errorf("goomba: %w: Cmd contains a line break", ErrInvalidOptions)
+	prefix, cmd, err := checkInstall(prefix, opt)
+	if err != nil {
+		return err
 	}
 	conc := opt.Concurrency
 	if conc == 0 {
 		conc = runtime.NumCPU()
 	}
 	conc = min(conc, maxConcurrency)
-	if prefix, err = filepath.Abs(prefix); err != nil {
-		return fmt.Errorf("goomba: prefix: %w", err)
-	}
-	// Resolve the prefix once and use only the resolved path: a symlink on
-	// the way to it that someone re-points later changes nothing, and the
-	// directories above it must be safe (checkPrefixAncestors).
-	if prefix, err = resolvedPath(prefix); err != nil {
-		return fmt.Errorf("goomba: prefix: %w", err)
-	}
-	if err := checkPrefixAncestors(prefix); err != nil {
-		return fmt.Errorf("goomba: prefix %s: %w", prefix, err)
-	}
-	if inside, err := within(opt.PkgsDir, prefix); err != nil {
-		return fmt.Errorf("goomba: %w", err)
-	} else if inside {
-		return fmt.Errorf("goomba: %w: package cache %s is inside the prefix %s", ErrInvalidOptions, opt.PkgsDir, prefix)
-	}
-	cmd := opt.Cmd
-	if cmd == "" {
-		cmd = "goomba create -p " + prefix
-	}
-	if strings.ContainsAny(cmd, "\r\n") {
-		return fmt.Errorf("goomba: prefix %q contains a line break", prefix)
-	}
 
 	// A panic in Progress, on whatever goroutine it is called, cancels the
 	// transaction; once it is rolled back the panic is raised again here.
@@ -315,6 +344,8 @@ func InstallLock(ctx context.Context, prefix string, lf *lock.Lockfile, opt Inst
 	}
 	total := int64(len(recs))
 
+	user := newUserSpecs(lf.Specs)
+
 	// 4. Fetch and extract.
 	cache := &fetch.Cache{Dir: opt.PkgsDir, Client: opt.Client}
 	dirs := make([]string, len(recs))
@@ -332,16 +363,33 @@ func InstallLock(ctx context.Context, prefix string, lf *lock.Lockfile, opt Inst
 		return err
 	}
 
-	// 5. Clobber check.
+	// 5. Clobber check, on the paths link will create (link.PlannedPaths
+	// plans and validates them as link.Link does).
+	linkOptions := func(i int) link.Options {
+		return link.Options{
+			Prefix:        prefix,
+			Platform:      lf.Platform,
+			Python:        py,
+			AllowScripts:  opt.AllowScripts,
+			RequestedSpec: user.requested(recs[i].Name),
+		}
+	}
 	dests := make([][]dest, len(recs))
 	cl := claims{}
 	for i, r := range recs {
-		if dests[i], err = packageDests(dirs[i], r, py); err != nil {
-			if pyErr != nil && errors.Is(err, link.ErrNoPython) {
-				return pyErr
+		planned, err := link.PlannedPaths(ctx, dirs[i], r, linkOptions(i))
+		if err != nil {
+			if errors.Is(err, link.ErrNoPython) {
+				if pyErr != nil {
+					return pyErr
+				}
+				if py == nil {
+					return fmt.Errorf("goomba: %w: python is not in the lockfile", err)
+				}
 			}
-			return err
+			return fmt.Errorf("goomba: %w", err)
 		}
+		dests[i] = plannedDests(planned)
 		if err := cl.add(i, dests[i], dists); err != nil {
 			return err
 		}
@@ -363,23 +411,16 @@ func InstallLock(ctx context.Context, prefix string, lf *lock.Lockfile, opt Inst
 	}()
 
 	// 7. Link.
-	user := newUserSpecs(lf.Specs)
 	insts := make([]*link.Installed, len(recs))
 	var order []int
 	var linked atomic.Int64
 	for _, layer := range plan.layers {
 		err = runBounded(ctx, len(layer), conc, func(ctx context.Context, k int) error {
 			i := layer[k]
-			inst, err := link.Link(ctx, dirs[i], recs[i], link.Options{
-				Prefix:        prefix,
-				Platform:      lf.Platform,
-				Python:        py,
-				AllowScripts:  opt.AllowScripts,
-				RequestedSpec: user.requested(recs[i].Name),
-			})
+			inst, err := link.Link(ctx, dirs[i], recs[i], linkOptions(i))
 			if err != nil {
 				if errors.Is(err, link.ErrExists) {
-					if ce := cl.attributeExists(prefix, i, dests[i], dists); ce != nil {
+					if ce := cl.attributeExistsError(prefix, i, err, dests[i], dists); ce != nil {
 						return fmt.Errorf("goomba: link %s: %w", dists[i], ce)
 					}
 				}
@@ -463,6 +504,127 @@ func InstallLock(ctx context.Context, prefix string, lf *lock.Lockfile, opt Inst
 	}
 	committed = true
 	emit(Event{Kind: EventDone, Done: total, Total: total})
+	return nil
+}
+
+// checkInstall validates opt for an installation into prefix, which it
+// resolves once (safedir.ResolvePath: symlinks are followed only from
+// directories nobody else can change, and every directory on the way must
+// be safe), and returns the resolved prefix and the history command. It
+// changes nothing.
+func checkInstall(prefix string, opt InstallOptions) (resolved, cmd string, err error) {
+	if opt.PkgsDir == "" {
+		return "", "", fmt.Errorf("goomba: %w: PkgsDir is required", ErrInvalidOptions)
+	}
+	if opt.Concurrency < 0 {
+		return "", "", fmt.Errorf("goomba: %w: negative Concurrency %d", ErrInvalidOptions, opt.Concurrency)
+	}
+	if strings.ContainsAny(opt.Cmd, "\r\n") {
+		return "", "", fmt.Errorf("goomba: %w: Cmd contains a line break", ErrInvalidOptions)
+	}
+	if prefix == "" {
+		return "", "", fmt.Errorf("goomba: %w: empty prefix", ErrInvalidOptions)
+	}
+	if resolved, err = safedir.ResolvePath(prefix); err != nil {
+		return "", "", prefixError(prefix, err)
+	}
+	if inside, err := within(opt.PkgsDir, resolved); err != nil {
+		return "", "", fmt.Errorf("goomba: %w", err)
+	} else if inside {
+		return "", "", fmt.Errorf("goomba: %w: package cache %s is inside the prefix %s", ErrInvalidOptions, opt.PkgsDir, resolved)
+	}
+	cmd = opt.Cmd
+	if cmd == "" {
+		cmd = "goomba create -p " + resolved
+	}
+	if strings.ContainsAny(cmd, "\r\n") {
+		return "", "", fmt.Errorf("goomba: prefix %q contains a line break", resolved)
+	}
+	return resolved, cmd, nil
+}
+
+// prefixError wraps an error about the prefix p: a safedir refusal as
+// ErrUnsafePrefix.
+func prefixError(p string, err error) error {
+	if errors.Is(err, safedir.ErrUnsafe) {
+		return fmt.Errorf("goomba: %w: %w", ErrUnsafePrefix, err)
+	}
+	return fmt.Errorf("goomba: prefix %s: %w", p, err)
+}
+
+// ValidateInstall reports the errors InstallLock (and Create) would return
+// for prefix and opt before doing any work, in this order:
+//
+//  1. ErrInvalidOptions for unusable options: no PkgsDir, a negative
+//     Concurrency, a line break in Cmd;
+//  2. the prefix's resolution (see InstallLock): ErrUnsafePrefix when a
+//     directory on the way to it, or the existing prefix directory itself,
+//     belongs to another user than root and the current user or may be
+//     written by group or others without the sticky bit, or when a symlink
+//     on the way is in a directory others may write; other errors (ENOTDIR,
+//     ENOENT, EEXIST for a dangling symlink) for a path that cannot be a
+//     prefix;
+//  3. ErrInvalidOptions for a PkgsDir inside the prefix;
+//  4. fetch.ErrUnsafeCache for a package cache (PkgsDir) that another user
+//     could change, or that a directory on the way to it would let them
+//     redirect (a missing PkgsDir is fine);
+//  5. ErrInvalidOptions for a malformed opt.Virtual record;
+//  6. ErrPrefixNotEmpty for a prefix that is not an empty directory;
+//  7. ErrUnsafePrefix for an existing empty prefix that is not the user's
+//     own, private directory (one made by root, or mode 1777).
+//
+// It reads the file system and changes nothing. Callers may use it to fail
+// fast before slow preparation, such as detecting virtual packages; success
+// does not guarantee that a later InstallLock succeeds, since the file
+// system may change meanwhile. It is safe for concurrent use.
+func ValidateInstall(prefix string, opt InstallOptions) error {
+	resolved, _, err := checkInstall(prefix, opt)
+	if err != nil {
+		return err
+	}
+	if err := checkPkgsDir(opt.PkgsDir); err != nil {
+		return err
+	}
+	if opt.Virtual != nil {
+		if _, err := newHostVirtual(opt.Virtual); err != nil {
+			return err
+		}
+	}
+	if err := checkPrefixFree(resolved); err != nil {
+		return err
+	}
+	// An existing (empty) prefix must be the user's own directory, as
+	// openPrefix requires.
+	if fi, err := os.Lstat(resolved); err == nil {
+		if err := safedir.CheckOwnDir(resolved, fi); err != nil {
+			return prefixError(resolved, err)
+		}
+	}
+	return nil
+}
+
+// checkPkgsDir checks the package cache directory as package fetch will,
+// without creating it: it and the directories on the way to it must be
+// safe (safedir), and an existing one must be the user's own directory.
+func checkPkgsDir(dir string) error {
+	real, err := safedir.ResolvePath(dir)
+	if err == nil {
+		var fi os.FileInfo
+		if fi, err = os.Lstat(real); errors.Is(err, fs.ErrNotExist) {
+			return nil
+		} else if err == nil {
+			if !fi.IsDir() {
+				return fmt.Errorf("goomba: package cache %s: not a directory", real)
+			}
+			err = safedir.CheckOwnDir(real, fi)
+		}
+	}
+	if errors.Is(err, safedir.ErrUnsafe) {
+		return fmt.Errorf("goomba: package cache: %w: %w", fetch.ErrUnsafeCache, err)
+	}
+	if err != nil {
+		return fmt.Errorf("goomba: package cache %s: %w", dir, err)
+	}
 	return nil
 }
 

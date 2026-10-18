@@ -18,10 +18,12 @@ import (
 	"github.com/richinsley/goomba/record"
 )
 
-// TestDestsMatchLink guards packageDests against drift from link until link
-// exports the paths a package creates: for every package in testdata, the
-// paths the clobber check predicts are exactly the paths link records.
-func TestDestsMatchLink(t *testing.T) {
+// TestPlannedPathsMatchLink cross-checks the clobber check's input: for
+// every package in testdata, link.PlannedPaths (what InstallLock compares
+// across packages) lists exactly the paths, path types and order that
+// link.Link records, and plannedDests claims directories as shareable and
+// everything else as one package's.
+func TestPlannedPathsMatchLink(t *testing.T) {
 	plat := hostPlatform(t)
 	var files []string
 	for _, dir := range []string{"pkgs", "clobber"} {
@@ -41,22 +43,23 @@ func TestDestsMatchLink(t *testing.T) {
 			}
 			pkgDir := filepath.Join(t.TempDir(), "pkg")
 			must(t, archive.Extract(context.Background(), f, pkgDir, archive.Limits{}))
-			dests, err := packageDests(pkgDir, p.rec, py)
-			must(t, err)
 			prefix := filepath.Join(t.TempDir(), "env")
-			inst, err := link.Link(context.Background(), pkgDir, p.rec, link.Options{Prefix: prefix, Platform: plat, Python: py})
+			opt := link.Options{Prefix: prefix, Platform: plat, Python: py}
+			planned, err := link.PlannedPaths(context.Background(), pkgDir, p.rec, opt)
 			must(t, err)
-			var want, got []string
+			inst, err := link.Link(context.Background(), pkgDir, p.rec, opt)
+			must(t, err)
+			var want []link.PlannedPath
 			for _, r := range inst.Paths {
-				want = append(want, r.Path)
+				want = append(want, link.PlannedPath{Path: r.Path, PathType: r.PathType})
 			}
-			for _, d := range dests {
-				got = append(got, d.path)
+			if !slices.Equal(planned, want) {
+				t.Errorf("PlannedPaths %v\nlink         %v", planned, want)
 			}
-			slices.Sort(want)
-			slices.Sort(got)
-			if !slices.Equal(got, want) {
-				t.Errorf("packageDests %v\nlink        %v", got, want)
+			for i, d := range plannedDests(planned) {
+				if d.path != planned[i].Path || (d.kind == claimDir) != (planned[i].PathType == link.PathDirectory) {
+					t.Errorf("dest %+v for %+v", d, planned[i])
+				}
 			}
 		})
 	}

@@ -20,8 +20,10 @@ import (
 )
 
 // TestCacheViaForeignSymlink (S1): the package cache is reached through a
-// symlink in a directory others can write; re-pointing it after the cache
-// was checked does not change what is installed.
+// symlink in a shared sticky directory (as /tmp); re-pointing it after the
+// cache was checked does not change what is installed. A symlink in a
+// directory others can write without the sticky bit is not followed at all
+// (WP8b review round 1, S1): another user could have put it there.
 func TestCacheViaForeignSymlink(t *testing.T) {
 	c := newChannel(t)
 	victim := buildPkg(t, tspec{name: "victim", version: "1", build: "0", files: []tfile{
@@ -38,6 +40,21 @@ func TestCacheViaForeignSymlink(t *testing.T) {
 	opt := c.options(t)
 	opt.CompilePyc = false
 	opt.PkgsDir = filepath.Join(shared, "cache")
+	if os.Geteuid() != 0 {
+		hits := c.totalHits()
+		prefix := filepath.Join(t.TempDir(), "env")
+		if err := InstallLock(context.Background(), prefix, lf, opt); !errors.Is(err, fetch.ErrUnsafeCache) {
+			t.Fatalf("cache through a symlink in a world-writable directory: %v, want ErrUnsafeCache", err)
+		}
+		if c.totalHits() != hits {
+			t.Error("downloaded into the redirected cache")
+		}
+		if ents, _ := os.ReadDir(private); len(ents) != 0 {
+			t.Fatalf("the symlink was followed: %v", ents)
+		}
+		assertNoPrefix(t, prefix)
+	}
+	must(t, os.Chmod(shared, 0o777|fs.ModeSticky))
 	evil := filepath.Join(root, "evil")
 	opt.Progress = func(e Event) {
 		if e.Kind != EventFetched {
@@ -118,9 +135,10 @@ func TestPrefixAncestors(t *testing.T) {
 }
 
 // TestPrefixViaForeignSymlink (S1): the prefix is named through a symlink
-// in a directory others can write. goomba resolves the prefix once, checks
-// the resolved path and installs there, so re-pointing the symlink during
-// the install changes nothing.
+// in a shared sticky directory. goomba resolves the prefix once, checks the
+// resolved path and installs there, so re-pointing the symlink during the
+// install changes nothing. A symlink in a directory others can write
+// without the sticky bit is not followed at all (WP8b review round 1, S1).
 func TestPrefixViaForeignSymlink(t *testing.T) {
 	c := newChannel(t)
 	lf := c.lockfile(t, nil, cancelEnv(t, fakePython(t, t.TempDir(), 0))...)
@@ -134,6 +152,19 @@ func TestPrefixViaForeignSymlink(t *testing.T) {
 	must(t, os.Chmod(shared, 0o777))
 	link := filepath.Join(shared, "env")
 	must(t, os.Symlink(real, link))
+	if os.Geteuid() != 0 {
+		hits := c.totalHits()
+		if err := InstallLock(context.Background(), link, lf, c.options(t)); !errors.Is(err, ErrUnsafePrefix) {
+			t.Fatalf("prefix through a symlink in a world-writable directory: %v, want ErrUnsafePrefix", err)
+		}
+		if c.totalHits() != hits {
+			t.Error("downloaded for an unsafe prefix")
+		}
+		if ents, _ := os.ReadDir(real); len(ents) != 0 {
+			t.Fatalf("the symlink was followed: %v", ents)
+		}
+	}
+	must(t, os.Chmod(shared, 0o777|fs.ModeSticky))
 	opt := c.options(t)
 	opt.Progress = func(e Event) {
 		if e.Kind == EventLinked {

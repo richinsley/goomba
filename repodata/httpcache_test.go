@@ -39,11 +39,11 @@ func TestCacheEntryRoundTrip(t *testing.T) {
 	if data, _ := os.ReadFile(f.indexCachePath(u)); bytes.Contains(data, []byte("secret")) {
 		t.Error("cache entry stores the token")
 	}
-	e := f.loadEntry(u)
-	if e == nil || string(e.body) != "body" || e.meta.ETag != `"x"` || !e.meta.Fetched.Equal(meta.Fetched) {
+	e, err := f.loadEntry(u)
+	if err != nil || e == nil || string(e.body) != "body" || e.meta.ETag != `"x"` || !e.meta.Fetched.Equal(meta.Fetched) {
 		t.Fatalf("entry %+v", e)
 	}
-	if f.loadEntry("https://example.com/other") != nil {
+	if e, _ := f.loadEntry("https://example.com/other"); e != nil {
 		t.Error("entry found for another URL")
 	}
 	// No temp files are left behind.

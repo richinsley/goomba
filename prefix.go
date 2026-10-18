@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/richinsley/goomba/internal/safedir"
 )
 
 // incompleteMarker is written into conda-meta first and removed last, so a
@@ -33,7 +35,7 @@ type prefixTx struct {
 // or an empty directory. openPrefix checks again under the lock; this early
 // check only avoids downloading for a prefix that cannot be used.
 func checkPrefixFree(prefix string) error {
-	fi, err := os.Stat(prefix)
+	fi, err := os.Lstat(prefix) // resolved: a symlink here is not a directory of the user's
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
@@ -68,9 +70,11 @@ func openPrefix(prefix string) (_ *prefixTx, err error) {
 		tx.removeParents()
 		return nil, fail(err)
 	}
-	if err := checkPrefixAncestors(prefix); err != nil {
+	// The directories made just now, and those above them, must still be
+	// safe: nothing was redirected meanwhile.
+	if err := safedir.CheckAncestors(prefix); err != nil {
 		tx.removeParents()
-		return nil, fail(err)
+		return nil, prefixError(prefix, err)
 	}
 	switch err := os.Mkdir(prefix, 0o700); {
 	case err == nil:
@@ -110,15 +114,15 @@ func openPrefix(prefix string) (_ *prefixTx, err error) {
 		abandon()
 		return nil, fail(ErrPrefixNotEmpty)
 	}
-	if st, err := os.Stat(prefix); err != nil || !os.SameFile(st, fi) {
+	if st, err := os.Lstat(prefix); err != nil || !os.SameFile(st, fi) {
 		tx.created = false
 		abandon()
 		return nil, fail(errors.New("prefix was replaced while it was being locked"))
 	}
-	if err := checkPrefixOwner(fi); err != nil {
+	if err := safedir.CheckOwnDir(prefix, fi); err != nil {
 		tx.created = false
 		abandon()
-		return nil, fail(err)
+		return nil, prefixError(prefix, err)
 	}
 	if names, err := d.Readdirnames(1); len(names) > 0 || err != nil && err != io.EOF {
 		// Not ours to remove, even if this call made the directory.
@@ -205,7 +209,7 @@ func (tx *prefixTx) rollback() {
 		tx.removeParents()
 		return
 	}
-	// An existing prefix gets back its mode, which passed checkPrefixOwner.
+	// An existing prefix gets back its mode, which passed safedir.CheckOwnDir.
 	_ = setDirMode(tx.dir, tx.mode)
 }
 
@@ -225,7 +229,11 @@ func (tx *prefixTx) removeParents() {
 func mkdirAllRecorded(dir string, created *[]string) error {
 	var missing []string
 	for d := filepath.Clean(dir); ; {
-		if _, err := os.Stat(d); err == nil {
+		if fi, err := os.Lstat(d); err == nil {
+			// dir was resolved: a symlink here appeared since.
+			if !fi.IsDir() {
+				return fmt.Errorf("%w: %s is not a directory (the path changed)", ErrUnsafePrefix, d)
+			}
 			break
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return err

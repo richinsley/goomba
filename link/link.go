@@ -205,108 +205,11 @@ func Link(ctx context.Context, pkgDir string, rec *record.PackageRecord, opt Opt
 	if err := ctx.Err(); err != nil {
 		return nil, fail(err)
 	}
-	if err := checkRecord(rec); err != nil {
-		return nil, fail(err)
-	}
-	prefix, err := checkPrefix(opt.Prefix)
+	pp, err := planPackage(pkgDir, rec, opt)
 	if err != nil {
 		return nil, fail(err)
 	}
-	if pkgDir, err = filepath.Abs(pkgDir); err != nil {
-		return nil, fail(err)
-	}
-	if fi, err := os.Stat(pkgDir); err != nil {
-		return nil, fail(err)
-	} else if !fi.IsDir() {
-		return nil, fail(fmt.Errorf("%w: %s is not a directory", ErrInvalidPackage, pkgDir))
-	}
-	pkg := newRoot(pkgDir)
-
-	index, indexNoarch, err := readIndex(pkg, rec)
-	if err != nil {
-		return nil, fail(err)
-	}
-	noarch := rec.Noarch
-	if noarch == "" {
-		noarch = indexNoarch
-	}
-	var py *PythonInfo
-	if noarch == "python" {
-		if opt.Python == nil {
-			return nil, fail(ErrNoPython)
-		}
-		if err := opt.Python.validate(); err != nil {
-			return nil, fail(err)
-		}
-		py = opt.Python
-	}
-
-	entries, err := readPackagePaths(pkg)
-	if err != nil {
-		return nil, fail(err)
-	}
-
-	// Plan and validate every destination before writing anything.
-	seen := make(map[string]bool, len(entries))
-	windows := isWindows(opt.Platform) || runtime.GOOS == "windows"
-	checkDst := func(dst string) error {
-		if err := validRelPath(dst); err != nil {
-			return err
-		}
-		first, _, _ := strings.Cut(dst, "/")
-		if foldName(first) == "conda-meta" {
-			return fmt.Errorf("%w: %q is inside conda-meta", ErrUnsafePath, dst)
-		}
-		if windows {
-			for c := range strings.SplitSeq(dst, "/") {
-				if windowsAlias(c) {
-					return fmt.Errorf("%w: %q has a component Windows would read as another name", ErrUnsafePath, dst)
-				}
-			}
-		}
-		if seen[dst] {
-			return fmt.Errorf("%w: %q is listed twice", ErrInvalidPackage, dst)
-		}
-		seen[dst] = true
-		dir, leaf := path.Split(dst)
-		inScriptDir := strings.Count(dst, "/") == 1 && isScriptDirName(strings.TrimSuffix(dir, "/"))
-		if !checkScriptName(rec.Name, opt.AllowScripts, leaf, kindFile, inScriptDir, inScriptDir) {
-			return fmt.Errorf("%w: %s", ErrLinkScript, dst)
-		}
-		return nil
-	}
-	plan := make([]plannedPath, 0, len(entries))
-	for _, e := range entries {
-		p, err := planPath(pkg, e, py, prefix, opt.Platform)
-		if err != nil {
-			return nil, fail(err)
-		}
-		if err := checkDst(p.dst); err != nil {
-			return nil, fail(err)
-		}
-		plan = append(plan, p)
-	}
-	var eps []plannedEntryPoint
-	if py != nil {
-		defs, err := readEntryPoints(pkg)
-		if err != nil {
-			return nil, fail(err)
-		}
-		if len(defs) > 0 && isWindows(opt.Platform) {
-			return nil, fail(fmt.Errorf("%w: windows entry point launchers", ErrUnsupported))
-		}
-		for _, def := range defs {
-			ep, err := ParseEntryPoint(def)
-			if err != nil {
-				return nil, fail(err)
-			}
-			dst := py.BinDir + "/" + ep.Command
-			if err := checkDst(dst); err != nil {
-				return nil, fail(err)
-			}
-			eps = append(eps, plannedEntryPoint{ep: ep, dst: dst})
-		}
-	}
+	prefix, pkgDir, py, plan, eps, windows := pp.prefix, pp.pkgDir, pp.py, pp.paths, pp.eps, pp.windows
 
 	// Create the prefix and its conda-meta directory, so that conda-meta
 	// can be recognised by identity from now on. Everything else Link
@@ -366,14 +269,14 @@ func Link(ctx context.Context, pkgDir string, rec *record.PackageRecord, opt Opt
 	}
 
 	// Write.
-	inst = &Installed{Prefix: prefix, PackageDir: pkgDir, Noarch: noarch, Index: index}
+	inst = &Installed{Prefix: prefix, PackageDir: pkgDir, Noarch: pp.noarch, Index: pp.index}
 	for _, p := range plan {
 		if err := ctx.Err(); err != nil {
 			return nil, fail(err)
 		}
 		r, err := l.linkPath(p)
 		if err != nil {
-			return nil, fail(fmt.Errorf("%s: %w", p.dst, err))
+			return nil, fail(atPath(p.dst, err))
 		}
 		inst.Paths = append(inst.Paths, r)
 	}
@@ -381,11 +284,9 @@ func Link(ctx context.Context, pkgDir string, rec *record.PackageRecord, opt Opt
 		return nil, fail(err)
 	}
 	if py != nil {
-		for _, p := range plan {
-			if isPycCandidate(p.entry.Path) {
-				inst.PythonSources = append(inst.PythonSources, p.dst)
-				inst.Paths = append(inst.Paths, PathRecord{Path: PycPath(p.dst, py.Version), PathType: PathPycFile})
-			}
+		for _, pyc := range pp.pyc {
+			inst.PythonSources = append(inst.PythonSources, pyc.src)
+			inst.Paths = append(inst.Paths, PathRecord{Path: pyc.dst, PathType: PathPycFile})
 		}
 		shebang := PythonShebang(prefix+"/"+py.Executable, opt.Platform)
 		for _, e := range eps {
@@ -393,12 +294,209 @@ func Link(ctx context.Context, pkgDir string, rec *record.PackageRecord, opt Opt
 				return nil, fail(err)
 			}
 			if err := l.writeEntryPoint(e.dst, entryPointScript(shebang, e.ep)); err != nil {
-				return nil, fail(fmt.Errorf("%s: %w", e.dst, err))
+				return nil, fail(atPath(e.dst, err))
 			}
 			inst.Paths = append(inst.Paths, PathRecord{Path: e.dst, PathType: PathUnixPythonEntryPoint})
 		}
 	}
 	return inst, nil
+}
+
+// pkgPlan is what Link plans from the package and the options alone,
+// before it looks at the prefix: every destination, validated.
+type pkgPlan struct {
+	prefix  string // cleaned absolute prefix
+	pkgDir  string // absolute package directory
+	index   map[string]json.RawMessage
+	noarch  string
+	py      *PythonInfo // set for noarch: python packages only
+	paths   []plannedPath
+	pyc     []plannedPyc
+	eps     []plannedEntryPoint
+	windows bool // the target or the host is Windows
+}
+
+// plannedPyc is a .pyc file recorded for a noarch: python source.
+type plannedPyc struct {
+	src, dst string // prefix-relative source and .pyc paths
+}
+
+// planPackage reads and validates the package metadata and plans every
+// destination: the package entries (relocated for noarch: python), the
+// .pyc files of noarch: python sources and the entry points, each checked
+// as a clean relative path outside conda-meta, not listed twice, not a
+// link script (unless allowed), and, for Windows targets or hosts, not a
+// name Win32 would read as another. It does not look at the prefix.
+func planPackage(pkgDir string, rec *record.PackageRecord, opt Options) (*pkgPlan, error) {
+	if err := checkRecord(rec); err != nil {
+		return nil, err
+	}
+	prefix, err := checkPrefix(opt.Prefix)
+	if err != nil {
+		return nil, err
+	}
+	if pkgDir, err = filepath.Abs(pkgDir); err != nil {
+		return nil, err
+	}
+	if fi, err := os.Stat(pkgDir); err != nil {
+		return nil, err
+	} else if !fi.IsDir() {
+		return nil, fmt.Errorf("%w: %s is not a directory", ErrInvalidPackage, pkgDir)
+	}
+	pkg := newRoot(pkgDir)
+
+	index, indexNoarch, err := readIndex(pkg, rec)
+	if err != nil {
+		return nil, err
+	}
+	pp := &pkgPlan{prefix: prefix, pkgDir: pkgDir, index: index, noarch: rec.Noarch}
+	if pp.noarch == "" {
+		pp.noarch = indexNoarch
+	}
+	if pp.noarch == "python" {
+		if opt.Python == nil {
+			return nil, ErrNoPython
+		}
+		if err := opt.Python.validate(); err != nil {
+			return nil, err
+		}
+		pp.py = opt.Python
+	}
+
+	entries, err := readPackagePaths(pkg)
+	if err != nil {
+		return nil, err
+	}
+
+	// Plan and validate every destination before writing anything.
+	seen := make(map[string]bool, len(entries))
+	pp.windows = isWindows(opt.Platform) || runtime.GOOS == "windows"
+	checkDst := func(dst string) error {
+		if err := validRelPath(dst); err != nil {
+			return err
+		}
+		first, _, _ := strings.Cut(dst, "/")
+		if foldName(first) == "conda-meta" {
+			return fmt.Errorf("%w: %q is inside conda-meta", ErrUnsafePath, dst)
+		}
+		if pp.windows {
+			for c := range strings.SplitSeq(dst, "/") {
+				if windowsAlias(c) {
+					return fmt.Errorf("%w: %q has a component Windows would read as another name", ErrUnsafePath, dst)
+				}
+			}
+		}
+		if seen[dst] {
+			return fmt.Errorf("%w: %q is listed twice", ErrInvalidPackage, dst)
+		}
+		seen[dst] = true
+		dir, leaf := path.Split(dst)
+		inScriptDir := strings.Count(dst, "/") == 1 && isScriptDirName(strings.TrimSuffix(dir, "/"))
+		if !checkScriptName(rec.Name, opt.AllowScripts, leaf, kindFile, inScriptDir, inScriptDir) {
+			return fmt.Errorf("%w: %s", ErrLinkScript, dst)
+		}
+		return nil
+	}
+	pp.paths = make([]plannedPath, 0, len(entries))
+	for _, e := range entries {
+		p, err := planPath(pkg, e, pp.py, prefix, opt.Platform)
+		if err != nil {
+			return nil, err
+		}
+		if err := checkDst(p.dst); err != nil {
+			return nil, err
+		}
+		pp.paths = append(pp.paths, p)
+	}
+	if pp.py != nil {
+		for _, p := range pp.paths {
+			if isPycCandidate(p.entry.Path) {
+				pp.pyc = append(pp.pyc, plannedPyc{src: p.dst, dst: PycPath(p.dst, pp.py.Version)})
+			}
+		}
+		defs, err := readEntryPoints(pkg)
+		if err != nil {
+			return nil, err
+		}
+		if len(defs) > 0 && isWindows(opt.Platform) {
+			return nil, fmt.Errorf("%w: windows entry point launchers", ErrUnsupported)
+		}
+		for _, def := range defs {
+			ep, err := ParseEntryPoint(def)
+			if err != nil {
+				return nil, err
+			}
+			dst := pp.py.BinDir + "/" + ep.Command
+			if err := checkDst(dst); err != nil {
+				return nil, err
+			}
+			pp.eps = append(pp.eps, plannedEntryPoint{ep: ep, dst: dst})
+		}
+	}
+	return pp, nil
+}
+
+// planned lists the destinations in the order of Installed.Paths.
+func (pp *pkgPlan) planned() []PlannedPath {
+	out := make([]PlannedPath, 0, len(pp.paths)+len(pp.pyc)+len(pp.eps))
+	for _, p := range pp.paths {
+		out = append(out, PlannedPath{Path: p.dst, PathType: p.entry.PathType})
+	}
+	for _, p := range pp.pyc {
+		out = append(out, PlannedPath{Path: p.dst, PathType: PathPycFile})
+	}
+	for _, e := range pp.eps {
+		out = append(out, PlannedPath{Path: e.dst, PathType: PathUnixPythonEntryPoint})
+	}
+	return out
+}
+
+// PlannedPath is one path Link creates in the prefix, or, for a .pyc file,
+// records for a later byte-compilation. It is a plain value.
+type PlannedPath struct {
+	// Path is the prefix-relative, slash-separated destination, after
+	// noarch: python relocation.
+	Path string
+	// PathType is the package entry's type (PathHardlink, PathSoftlink or
+	// PathDirectory), PathPycFile or PathUnixPythonEntryPoint: the type
+	// the path has in Installed.Paths.
+	PathType PathType
+}
+
+// PlannedPaths returns the paths Link(ctx, pkgDir, rec, opt) creates (or
+// records, for .pyc files), exactly as Installed.Paths will list them and
+// in the same order: the package's entries from info/paths.json or the
+// legacy info/files (relocated for noarch: python), then the .pyc files of
+// noarch: python sources, then the entry points. It reads and validates
+// the package metadata as Link's planning does (record fields, index.json,
+// paths, link-script names, placeholder lengths against opt.Prefix, entry
+// points, Windows names) and fails with the same errors, so a package
+// PlannedPaths accepts fails Link only because of the prefix: a
+// destination that exists, or a symlink in the prefix that leads a path
+// somewhere it may not go. It does not look at the prefix, which need not
+// exist; opt.Prefix is still required (an absolute path), as for Link.
+func PlannedPaths(ctx context.Context, pkgDir string, rec *record.PackageRecord, opt Options) ([]PlannedPath, error) {
+	if rec == nil {
+		return nil, errors.New("link: nil package record")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("link: %s: %w", rec.Dist(), err)
+	}
+	pp, err := planPackage(pkgDir, rec, opt)
+	if err != nil {
+		return nil, fmt.Errorf("link: %s: %w", rec.Dist(), err)
+	}
+	return pp.planned(), nil
+}
+
+// atPath prefixes err with the destination dst, unless err is an
+// *ExistsError for dst, which names it already.
+func atPath(dst string, err error) error {
+	var ee *ExistsError
+	if errors.As(err, &ee) && ee.Path == dst {
+		return err
+	}
+	return fmt.Errorf("%s: %w", dst, err)
 }
 
 // checkRecord validates the parts of rec that become file names.
@@ -701,13 +799,13 @@ func (l *linker) planDest(ov overlay, dst string, kind entryKind, target string)
 		if kind == kindDir && e.kind == kindDir {
 			return nil
 		}
-		return fmt.Errorf("%s: %w (another path of the package lands there)", dst, ErrExists)
+		return &ExistsError{Path: dst, SamePackage: true}
 	}
 	fi, err := os.Lstat(l.root.abs(full))
 	switch {
 	case err == nil:
 		if kind != kindDir || !fi.IsDir() {
-			return fmt.Errorf("%s: %w", dst, ErrExists)
+			return &ExistsError{Path: dst}
 		}
 	case !errors.Is(err, fs.ErrNotExist):
 		return fmt.Errorf("%s: %w", dst, err)
@@ -768,7 +866,7 @@ func (l *linker) create(dst string) (*os.File, error) {
 	})
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return nil, ErrExists
+			return nil, &ExistsError{Path: dst}
 		}
 		return nil, err
 	}
@@ -866,7 +964,7 @@ func (l *linker) linkPath(p plannedPath) (PathRecord, error) {
 				l.tx.add(abs)
 				linked = true
 			case errors.Is(err, fs.ErrExist):
-				return r, ErrExists
+				return r, &ExistsError{Path: p.dst}
 			case errors.Is(err, ErrUnsafePath):
 				return r, err
 			}
@@ -897,7 +995,7 @@ func (l *linker) linkPath(p plannedPath) (PathRecord, error) {
 		abs, err := l.place(p.dst, kindSymlink, p.linkTarget, func(d dirHandle, leaf string) error { return d.symlink(p.linkTarget, leaf) })
 		if err != nil {
 			if errors.Is(err, fs.ErrExist) {
-				return r, ErrExists
+				return r, &ExistsError{Path: p.dst}
 			}
 			return r, err
 		}

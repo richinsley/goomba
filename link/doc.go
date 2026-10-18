@@ -9,6 +9,10 @@
 //
 // Link writes the package files and returns an Installed description;
 // WriteCondaMeta then records it under conda-meta/. Unlink reverses both.
+// PlannedPaths lists the paths Link would create, from the same planning
+// and validation, without writing anything, so a transaction can compare
+// the packages' paths before it links any of them. A destination that
+// exists is an *ExistsError naming it.
 // Link never runs package scripts: a package that ships a pre-link,
 // post-link or pre-unlink script is refused with ErrLinkScript unless the
 // caller allows it, and even then the script is only installed, and only

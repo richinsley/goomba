@@ -47,7 +47,14 @@
 // re-extract each other's trees whenever they use a package; give them
 // separate caches to avoid that.
 //
-// Only https URLs are fetched. Redirects to anything else are refused, and
-// no Referer is sent to a redirect target. Transient failures are retried;
-// a digest mismatch never is.
+// Only https URLs are fetched, and none with credentials (user info or an
+// anaconda.org /t/<token>/ segment). Redirects to anything else are
+// refused, and no Referer is sent to a redirect target. Downloads follow
+// the same network policy as package repodata's index downloads (see
+// Cache.Client): a URL on a public host never leads to a loopback, private,
+// link-local or other non-public address, through a redirect or a DNS
+// answer, which is checked on the address actually dialled; through a
+// proxy, which resolves names itself, only the host as written can be
+// checked. Transient failures are retried; a digest mismatch or a policy
+// refusal never is.
 package fetch

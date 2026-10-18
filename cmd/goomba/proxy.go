@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -46,12 +45,12 @@ func proxyClient(getenv func(string) string, warn io.Writer) (*http.Client, erro
 	for _, note := range checkNoProxy(np) {
 		fmt.Fprintf(warn, "goomba: warning: %s: %s\n", npName, note)
 	}
+	// No DialContext: the library's network guard installs a dialer (with
+	// fetch's connect timeout) that resolves names itself and refuses
+	// non-public addresses for public URLs before connecting; the dial to
+	// the proxy itself is exempt.
 	return &http.Client{Transport: &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
+		Proxy:                 http.ProxyFromEnvironment,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          64,
 		MaxIdleConnsPerHost:   16,

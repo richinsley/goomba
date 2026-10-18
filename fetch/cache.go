@@ -26,6 +26,8 @@ import (
 	"sync"
 
 	"github.com/richinsley/goomba/archive"
+	"github.com/richinsley/goomba/internal/netguard"
+	"github.com/richinsley/goomba/internal/safedir"
 )
 
 // Sentinel errors; failures wrap one of these, an *IntegrityError, a
@@ -36,7 +38,10 @@ var (
 	// not name a safe cache entry, a negative size.
 	ErrInvalidInput = errors.New("invalid input")
 	// ErrInsecureURL reports a URL, or a redirect target, that is not
-	// https (or loopback http with AllowHTTP).
+	// https (or loopback http with AllowHTTP), or a URL, redirect target
+	// or connection address goomba's network policy refuses (see
+	// Cache.Client); such errors also wrap netguard's ErrUnsupportedURL,
+	// the sentinel package repodata exports as ErrUnsupportedURL.
 	ErrInsecureURL = errors.New("insecure url")
 	// ErrUnsafeCache reports cache state goomba refuses to use: a cache
 	// directory, a directory above it, a content or lock directory, or an
@@ -143,7 +148,20 @@ type Cache struct {
 	// Client performs downloads. nil selects a client with connect, TLS
 	// and response-header timeouts and no proxy (proxies come from the
 	// caller's Client, never from the environment). Its CheckRedirect, if
-	// any, runs after the cache's own https-only check.
+	// any, runs after the cache's own checks. Downloads follow goomba's
+	// network policy (internal/netguard, as for package repodata's index
+	// downloads): a URL on a public host may lead, through redirects and
+	// DNS answers alike, only to https URLs and connections on public
+	// addresses, never to a loopback, private, link-local or other
+	// non-public one; a URL naming such a host itself (an address literal
+	// or a localhost name: an internal mirror) may reach them over https.
+	// The address check applies to goomba's default transport, to a
+	// caller's *http.Transport (a clone is used) and to the transport
+	// behind a Client with a nil Transport; any other http.RoundTripper is
+	// used as is, and its owner is responsible for network policy. Through
+	// a proxy (the caller's transport's Proxy), the proxy resolves the
+	// host's name, so only the host as written is checked, not the address
+	// it resolves to; the proxy's own address is not checked.
 	Client *http.Client
 	// Retries is how many times a transient failure (network error,
 	// stall, HTTP 408, 413, 429 or 5xx) is retried with exponential
@@ -158,9 +176,10 @@ type Cache struct {
 	mu       sync.Mutex
 	resolved string // Dir with symlinks resolved, set on first use
 	locks    map[string]*keyLock
-	client   *http.Client // default client, built on first use
-	markKey  []byte       // MAC key, loaded on first use
-	backoff0 int64        // first retry delay in ns; 0 selects defaultBackoff (tests)
+	clients  map[netguard.Policy]*http.Client // per network policy, built on first use
+	markKey  []byte                           // MAC key, loaded on first use
+	backoff0 int64                            // first retry delay in ns; 0 selects defaultBackoff (tests)
+	lookup   netguard.LookupFunc              // name resolution; nil = the system resolver (tests)
 }
 
 // maxMessageLen bounds untrusted strings (URLs, record fields) quoted in
@@ -248,6 +267,11 @@ func (c *Cache) parseURL(rawURL string) (*url.URL, string, error) {
 	if err := c.allowedURL(u); err != nil {
 		return nil, "", err
 	}
+	if pol, ok := netguard.For(u); !ok {
+		return nil, "", fmt.Errorf("%w: %s: only https is allowed", ErrInsecureURL, redact(u))
+	} else if err := pol.Check(u); err != nil {
+		return nil, "", fmt.Errorf("%w: %w", ErrInsecureURL, err)
+	}
 	if u.Opaque != "" || strings.HasSuffix(u.Path, "/") {
 		return nil, "", fmt.Errorf("%w: %s: url does not end in a file name", ErrInvalidInput, redact(u))
 	}
@@ -324,7 +348,7 @@ func (c *Cache) withLock(ctx context.Context, sha string, fn func(dir string, ke
 	if err != nil {
 		return err
 	}
-	dir, err := ensureDir(filepath.Join(root, sha))
+	dir, err := ensureContentDir(filepath.Join(root, sha))
 	if err != nil {
 		return err
 	}
@@ -332,9 +356,10 @@ func (c *Cache) withLock(ctx context.Context, sha string, fn func(dir string, ke
 }
 
 // root returns the cache directory with its symlinks resolved, creating Dir
-// on first use, and checks it (checkCacheDir). Dir is resolved once: from
-// then on the cache works in the resolved directory only, so a symlink on
-// the way to Dir that someone re-points later changes nothing.
+// on first use (safedir.Resolve), and checks it (checkCacheDir) on every
+// use. Dir is resolved once: from then on the cache works in the resolved
+// directory only, so a symlink on the way to Dir that someone re-points
+// later changes nothing.
 func (c *Cache) root() (string, error) {
 	c.mu.Lock()
 	r := c.resolved
@@ -343,15 +368,9 @@ func (c *Cache) root() (string, error) {
 		if c.Dir == "" {
 			return "", fmt.Errorf("%w: Cache.Dir is empty", ErrInvalidInput)
 		}
-		if err := os.MkdirAll(c.Dir, 0o755); err != nil {
-			return "", err
-		}
-		real, err := filepath.EvalSymlinks(c.Dir)
-		if err == nil {
-			real, err = filepath.Abs(real)
-		}
+		real, err := safedir.Resolve(c.Dir)
 		if err != nil {
-			return "", err
+			return "", unsafeCache(err)
 		}
 		c.mu.Lock()
 		if c.resolved == "" {
@@ -366,26 +385,23 @@ func (c *Cache) root() (string, error) {
 	return r, nil
 }
 
-// ensureDir makes p a real directory, replacing a file or symlink planted
-// there. An existing directory must belong to the current user and not be
-// writable by group or others.
-func ensureDir(p string) (string, error) {
-	fi, err := os.Lstat(p)
-	switch {
-	case err == nil && fi.IsDir():
-		if err := checkPrivate(p, fi); err != nil {
-			return "", err
-		}
-		return p, nil
-	case err == nil:
+// ensureContentDir makes p, the content directory <Dir>/<sha256>, a real
+// directory. A file or symlink at that name, which only the cache's own
+// layout uses, is a leftover or a plant: it is removed and replaced, but
+// only at a sha256-named path; safedir itself never removes anything. An
+// existing directory must belong to the current user and not be writable
+// by group or others.
+func ensureContentDir(p string) (string, error) {
+	if !isHexDigest(filepath.Base(p)) {
+		return "", fmt.Errorf("%w: %s is not a content directory name", ErrInvalidInput, p)
+	}
+	if fi, err := os.Lstat(p); err == nil && !fi.IsDir() {
 		if err := os.Remove(p); err != nil {
 			return "", err
 		}
-	case !errors.Is(err, fs.ErrNotExist):
-		return "", err
 	}
-	if err := os.Mkdir(p, 0o755); err != nil {
-		return "", err
+	if err := safedir.EnsureDir(p); err != nil {
+		return "", unsafeCache(err)
 	}
 	return p, nil
 }

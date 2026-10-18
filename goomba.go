@@ -2,6 +2,19 @@
 // resolves match specs to lockfiles and installs lockfiles into prefixes,
 // with no micromamba or conda binary involved.
 //
+// Lock resolves match specs against conda channels into a lockfile: it
+// opens the channels' indexes with package repodata (sharded when the
+// channel publishes a sharded index, with the python-minor prefilter when
+// the specs pin python), solves with package solve under strict channel
+// priority and records the result with package lock. Create is Lock
+// followed by InstallLock: the equivalent of `micromamba create -p PREFIX
+// -c CHANNEL SPEC...`. The index cache (LockOptions.RepodataDir) must be
+// private to the user, like the package cache, because it supplies the
+// sha256 every archive is verified against. Lockfiles hold package URLs of
+// the form <channel>/<subdir>/<file> only: a channel whose index points
+// packages elsewhere with a base_url that does not end in /<subdir>/
+// cannot be locked (Lock fails with lock.ErrInvalid).
+//
 // InstallLock turns a verified lockfile (package lock) into a working
 // environment with no resolver and no network beyond fetching the locked
 // archives. Every archive is checked against the lockfile's sha256 before
@@ -21,7 +34,11 @@
 //     timestamp, license and track_features from each package's
 //     info/index.json (micromamba 2.2.0's explicit install leaves
 //     build_number, depends, constrains, license, timestamp and sha256
-//     empty), so they equal the records micromamba writes after a solve;
+//     empty), so they equal the records micromamba writes after a solve,
+//     except that depends and constrains keep the index's text and order
+//     (micromamba 2.2.0 records constrains as libsolv renders them,
+//     "libgcc-ng ==15.2.0=*_18" as "libgcc-ng ==15.2.0 *_18", and lists
+//     both in the order of its libsolv cache once it has one);
 //   - requested_spec and the history's "# update specs" come from the
 //     lockfile's specs, as after a solve, rather than one exact spec per
 //     package, and the history lists packages in goomba's link order;
@@ -30,7 +47,8 @@
 //     lacks (micromamba does not check them for explicit installs).
 //
 // The package keeps no global state and reads no environment variables or
-// configuration files: everything comes from InstallOptions. The only
+// configuration files: everything comes from LockOptions and
+// InstallOptions. The only
 // process it starts is the new environment's Python interpreter, to
 // byte-compile noarch: python packages as libmamba does (see InstallLock),
 // except that it runs the interpreter isolated (-I -S, so no package code
@@ -53,7 +71,10 @@
 // another user could write or whose directories above could be swapped,
 // and extracts files without group or other write; InstallLock resolves the
 // prefix once, refuses one that another user could write or swap (the same
-// rule for the directories above it), takes group and other write off
+// rule for every directory on the way to it, and a symlink on the way is
+// followed only from a directory nobody else can change, see package
+// internal/safedir; the repodata index cache follows the same rules),
+// takes group and other write off
 // every directory and conda-meta file it makes, and checks the interpreter
 // it runs, following a symlinked interpreter to the package file it is.
 // What remains:

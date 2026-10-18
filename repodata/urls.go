@@ -6,66 +6,38 @@
 package repodata
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
+
+	"github.com/richinsley/goomba/internal/netguard"
 )
 
 // urlPolicy decides which URLs a channel may lead to: the channel URL
-// itself, base URLs from its indexes and redirect targets.
-//
-// A channel on a public host may only lead to https URLs on public hosts:
-// not a loopback, private, shared (CGNAT), link-local, site-local,
-// multicast, reserved or NAT64 address, nor a localhost name, so a hostile
-// index or redirect cannot aim requests at local services. A channel on
-// such a host itself (an internal mirror) may lead to them over https.
-// Plain http is allowed only for a channel that is itself http on a
-// loopback host (test servers), and then only to loopback hosts. A
-// redirect never goes from https to http. URLs with user info or an
-// anaconda.org /t/<token>/ segment are refused everywhere.
-//
-// The policy is enforced twice: on the URL's host string, which must be in
-// canonical form (canonicalHost), and on the address each connection goes
-// to (guardTransport), so a name that resolves to a private address is
-// caught too.
+// itself, base URLs from its indexes and redirect targets. It is the
+// channel's internal/netguard policy (see that package for the rules):
+// a channel on a public host may only lead to https URLs on public hosts,
+// a channel on a loopback or private host may also lead to such hosts over
+// https, and plain http is allowed only from an http channel on a loopback
+// host, to loopback hosts. The policy is enforced on the URL's host string
+// and on the address each connection goes to.
 type urlPolicy struct {
 	httpLoopback bool // the channel is http on a loopback host
 	privateHosts bool // the channel is on a loopback or private host
 }
 
+// guard returns the netguard form of p.
+func (p urlPolicy) guard() netguard.Policy {
+	return netguard.Policy{HTTPLoopback: p.httpLoopback, PrivateHosts: p.privateHosts}
+}
+
 // check enforces the policy on u. Error messages may echo u: URLs with
 // credentials are refused before anything is fetched.
-func (p urlPolicy) check(u *url.URL) error {
-	if u.User != nil {
-		return fmt.Errorf("%w: URL with user info", ErrUnsupportedURL)
-	}
-	if hasTokenSegment(u.Path) {
-		return fmt.Errorf("%w: URL with a /t/<token>/ segment", ErrUnsupportedURL)
-	}
-	if u.Host == "" || u.Opaque != "" {
-		return fmt.Errorf("%w: %s: missing host", ErrUnsupportedURL, u)
-	}
-	host := u.Hostname()
-	if err := canonicalHost(host); err != nil {
-		return err
-	}
-	switch strings.ToLower(u.Scheme) {
-	case "https":
-		if !p.privateHosts && isLocalHost(host) {
-			return fmt.Errorf("%w: %s: loopback or private address for a public channel", ErrUnsupportedURL, u)
-		}
-	case "http":
-		if !p.httpLoopback || !isLoopbackHost(host) {
-			return fmt.Errorf("%w: %s: plain http is only allowed from a loopback http channel to loopback hosts", ErrUnsupportedURL, u)
-		}
-	default:
-		return fmt.Errorf("%w: %s: scheme must be https", ErrUnsupportedURL, u)
-	}
-	return nil
-}
+func (p urlPolicy) check(u *url.URL) error { return p.guard().Check(u) }
+
+// lookupFunc resolves a host name to addresses (nil: the system resolver).
+type lookupFunc = netguard.LookupFunc
 
 // redact returns u as a string for messages, with any password masked.
 // Channel URLs with credentials are refused, so this is defense in depth.
@@ -103,20 +75,14 @@ func canonicalChannel(channelURL string) (*url.URL, urlPolicy, error) {
 	if err != nil {
 		return nil, urlPolicy{}, errChannelParse
 	}
-	if u.User != nil || hasTokenSegment(u.Path) {
+	if u.User != nil || netguard.HasTokenSegment(u.Path) {
 		return nil, urlPolicy{}, errChannelCreds
 	}
-	pol := urlPolicy{privateHosts: isLocalHost(u.Hostname())}
-	switch strings.ToLower(u.Scheme) {
-	case "https":
-	case "http":
-		if !isLoopbackHost(u.Hostname()) {
-			return nil, urlPolicy{}, errChannelScheme
-		}
-		pol.httpLoopback = true
-	default:
+	gp, ok := netguard.For(u)
+	if !ok {
 		return nil, urlPolicy{}, errChannelScheme
 	}
+	pol := urlPolicy{httpLoopback: gp.HTTPLoopback, privateHosts: gp.PrivateHosts}
 	if u.Host == "" || u.Opaque != "" {
 		return nil, urlPolicy{}, errChannelHost
 	}
@@ -137,18 +103,6 @@ func canonicalChannel(channelURL string) (*url.URL, urlPolicy, error) {
 		return nil, urlPolicy{}, errChannelScheme
 	}
 	return &c, pol, nil
-}
-
-// hasTokenSegment reports an anaconda.org token path: a "t" segment
-// followed by another segment.
-func hasTokenSegment(p string) bool {
-	segs := strings.Split(p, "/")
-	for i := 0; i+1 < len(segs); i++ {
-		if segs[i] == "t" && segs[i+1] != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // subdirURL returns "<channel>/<subdir>/" for a canonical channel.
@@ -212,75 +166,13 @@ func joinFile(base *url.URL, fn string) string {
 	return base.String() + url.PathEscape(fn)
 }
 
-// safeClient copies c (or builds a default client) and wraps CheckRedirect
-// so that a redirect to a URL the policy refuses, or from https to http,
-// fails the request.
-//
-// The transport is guarded so that connections obey the policy too: goomba's
-// default transport, a caller's *http.Transport (cloned) and the default
-// transport behind a client with a nil Transport all are. Any other
-// http.RoundTripper is used as is: its owner is responsible for network
-// policy.
+// safeClient copies c (or builds a default client) with the channel's
+// policy applied to redirects and to connections (netguard.Client): a
+// redirect to a URL the policy refuses, or from https to http, fails the
+// request, and goomba's default transport, a caller's *http.Transport and
+// the default transport behind a client with a nil Transport only connect
+// to allowed addresses. Any other http.RoundTripper is used as is: its
+// owner is responsible for network policy.
 func safeClient(c *http.Client, pol urlPolicy, lookup lookupFunc) *http.Client {
-	var out http.Client
-	if c != nil {
-		out = *c
-	}
-	switch t := out.Transport.(type) {
-	case nil:
-		if c == nil {
-			out.Transport = guardTransport(defaultTransport(), pol, lookup)
-		} else if dt := defaultTransportClone(); dt != nil {
-			out.Transport = guardTransport(dt, pol, lookup)
-		}
-	case *http.Transport:
-		out.Transport = guardTransport(t, pol, lookup)
-	}
-	inner := out.CheckRedirect
-	out.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if err := pol.check(req.URL); err != nil {
-			return fmt.Errorf("repodata: refusing redirect: %w", err)
-		}
-		for _, v := range via {
-			if strings.EqualFold(v.URL.Scheme, "https") && !strings.EqualFold(req.URL.Scheme, "https") {
-				return fmt.Errorf("repodata: refusing redirect: %w: https to %s", ErrUnsupportedURL, req.URL.Scheme)
-			}
-		}
-		if inner != nil {
-			return inner(req, via)
-		}
-		if len(via) >= 10 {
-			return errors.New("repodata: stopped after 10 redirects")
-		}
-		return nil
-	}
-	return &out
-}
-
-// defaultTransportClone clones http.DefaultTransport (what a client with
-// a nil Transport uses) without its stock dialer, which is not the
-// caller's: the guard then resolves and checks before connecting. It
-// returns nil if DefaultTransport is not an *http.Transport.
-func defaultTransportClone() *http.Transport {
-	dt, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return nil
-	}
-	dt = dt.Clone()
-	dt.DialContext = nil
-	return dt
-}
-
-func defaultTransport() *http.Transport {
-	return &http.Transport{
-		Proxy: nil, // library code never reads the environment (HTTPS_PROXY); pass Options.Client to use a proxy
-		// No DialContext: guardTransport installs its resolving dialer.
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   DefaultConcurrency,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   30 * time.Second,
-		ResponseHeaderTimeout: 60 * time.Second,
-		ExpectContinueTimeout: time.Second,
-	}
+	return netguard.Client(c, pol.guard(), lookup)
 }

@@ -21,42 +21,6 @@ import (
 	"time"
 )
 
-func TestCanonicalHost(t *testing.T) {
-	for _, h := range []string{"conda.anaconda.org", "127.0.0.1", "::1", "1e100.net", "a-1.b", "10.0.0.5", "fd00::1"} {
-		if err := canonicalHost(h); err != nil {
-			t.Errorf("canonicalHost(%q): %v", h, err)
-		}
-	}
-	for _, h := range []string{
-		"", "localhost.", "LOCALHOST.", "127.0.0.1.", "127.1", "2130706433", "0x7f000001", "0177.0.0.1",
-		"0x7f.0.0.1", "127.0.0.01", "ｌｏｃａｌｈｏｓｔ", "１２７．０．０．１", "127。0。0。1", "ⓛⓞⓒⓐⓛⓗⓞⓢⓣ",
-		"fe80::1%eth0", "a b", "a\x00b", "1.2.3", "host.123",
-	} {
-		if err := canonicalHost(h); !errors.Is(err, ErrUnsupportedURL) {
-			t.Errorf("canonicalHost(%q) = %v", h, err)
-		}
-	}
-}
-
-func TestIsPublicAddr(t *testing.T) {
-	for _, s := range []string{
-		"0.0.0.0", "0.0.0.1", "10.1.2.3", "100.64.0.1", "100.100.100.200", "100.127.255.255", "127.0.0.1",
-		"127.255.255.254", "169.254.169.254", "172.16.0.1", "172.31.255.255", "192.0.0.8", "192.168.1.1",
-		"198.18.0.1", "224.0.0.1", "240.0.0.1", "255.255.255.255",
-		"::", "::1", "::127.0.0.1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "64:ff9b:1::1",
-		"fc00::1", "fd00:ec2::254", "fe80::1", "fec0::1", "ff02::1",
-	} {
-		if isPublicAddr(netip.MustParseAddr(s)) {
-			t.Errorf("%s is public", s)
-		}
-	}
-	for _, s := range []string{"1.1.1.1", "8.8.8.8", "100.63.255.255", "100.128.0.0", "172.32.0.1", "2606:4700::1111", "::ffff:8.8.8.8"} {
-		if !isPublicAddr(netip.MustParseAddr(s)) {
-			t.Errorf("%s is not public", s)
-		}
-	}
-}
-
 // countingListener accepts and closes TCP connections, counting them: any
 // count means a dial reached the loopback service.
 func countingListener(t *testing.T) (string, *atomic.Int64) {
@@ -104,6 +68,10 @@ func get(f *fetcher, raw string) error {
 	_, _, err = f.do(req, 1<<20)
 	return err
 }
+
+// The network guard itself (host spellings, address ranges, transport
+// wrapping) is tested in internal/netguard, where it moved from this
+// package; the tests here check it end to end through a channel's fetcher.
 
 // SF2: every spelling of a loopback or non-public host that a resolver or
 // dialer might accept is refused for a public channel, and nothing reaches
@@ -290,52 +258,6 @@ func TestProxyAddressExempt(t *testing.T) {
 	})
 	if err := get(direct, "https://public.example.test:"+proxyURL.Port()+"/x"); !errors.Is(err, ErrUnsupportedURL) {
 		t.Errorf("proxy address dialled directly: %v", err)
-	}
-}
-
-// Other RoundTrippers are used as given: their owner handles network policy.
-type stubRT struct{}
-
-func (stubRT) RoundTrip(*http.Request) (*http.Response, error) { return nil, errors.New("stub") }
-
-func TestCustomRoundTripperKept(t *testing.T) {
-	c := safeClient(&http.Client{Transport: stubRT{}}, urlPolicy{}, nil)
-	if _, ok := c.Transport.(stubRT); !ok {
-		t.Errorf("transport %T", c.Transport)
-	}
-	c = safeClient(&http.Client{}, urlPolicy{}, nil)
-	if g, ok := c.Transport.(*guardedTransport); !ok || g.t == http.DefaultTransport {
-		t.Errorf("nil Transport not replaced by a guarded clone: %T", c.Transport)
-	}
-}
-
-// Nit: a client with a nil Transport uses a DefaultTransport clone without
-// its stock dialer, so the guard resolves before connecting (the live test
-// TestLiveLoopbackNamesNeverConnect checks this end to end).
-func TestDefaultTransportCloneDropsStockDialer(t *testing.T) {
-	dt := defaultTransportClone()
-	if dt == nil || dt.DialContext != nil || dt == http.DefaultTransport {
-		t.Fatalf("clone %+v", dt)
-	}
-	if http.DefaultTransport.(*http.Transport).DialContext == nil {
-		t.Error("the shared DefaultTransport was modified")
-	}
-	// Behind the guard, the clone's dials go through the resolving dialer:
-	// with a resolver mapping a public name to loopback, nothing connects.
-	port, hits := countingListener(t)
-	g := guardTransport(dt, urlPolicy{}, func(context.Context, string) ([]netip.Addr, error) {
-		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
-	})
-	gt := g.(*guardedTransport)
-	gt.proxy = nil // ignore any proxy configured in the environment
-	gt.t.Proxy = nil
-	f := publicFetcher(t, &http.Client{Transport: g}, nil)
-	if err := get(f, "https://public.example.test:"+port+"/x"); !errors.Is(err, ErrUnsupportedURL) {
-		t.Errorf("err = %v", err)
-	}
-	time.Sleep(30 * time.Millisecond)
-	if n := hits.Load(); n != 0 {
-		t.Errorf("%d connections reached the loopback listener", n)
 	}
 }
 

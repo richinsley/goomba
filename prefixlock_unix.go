@@ -8,18 +8,18 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
-	"syscall"
 
 	"golang.org/x/sys/unix"
 )
 
-// lockDir opens the directory dir and takes an exclusive, non-blocking
-// flock on it. The lock belongs to the open file, so it conflicts with any
+// lockDir opens the directory dir, refusing a symlink there, and takes an
+// exclusive, non-blocking flock on it. The lock belongs to the open file, so it conflicts with any
 // other open of the directory that locks it, in this process or another,
 // and it leaves nothing behind in the prefix.
 func lockDir(dir string) (*os.File, error) {
-	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	// O_NOFOLLOW: dir is resolved; a symlink there now was planted since
+	// and must not be followed (its target's parents were never checked).
+	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, &os.PathError{Op: "open", Path: dir, Err: err}
 	}
@@ -43,30 +43,6 @@ func lockDir(dir string) (*os.File, error) {
 func unlockDir(f *os.File) {
 	_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	_ = f.Close()
-}
-
-// checkPrefixOwner refuses a prefix directory (fi, from the locked handle)
-// that another user could change: it must belong to the effective user and
-// not be writable by group or others, except by the user's private group
-// (gid equal to the uid and to the effective gid), as directories are
-// under umask 002 on user-private-group systems.
-func checkPrefixOwner(fi os.FileInfo) error {
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return fmt.Errorf("%w: no owner information", ErrUnsafePrefix)
-	}
-	euid, egid := os.Geteuid(), os.Getegid()
-	if int(st.Uid) != euid {
-		return fmt.Errorf("%w: it belongs to uid %d, not the current user (uid %d)", ErrUnsafePrefix, st.Uid, euid)
-	}
-	perm := fi.Mode().Perm()
-	if int(st.Gid) == euid && egid == euid {
-		perm &^= 0o020
-	}
-	if perm&0o022 != 0 {
-		return fmt.Errorf("%w: it is writable by group or others (mode %v)", ErrUnsafePrefix, fi.Mode().Perm())
-	}
-	return nil
 }
 
 // emptyDir removes everything inside the open directory d, working relative
@@ -156,47 +132,6 @@ func removeAt(fd int, name string, depth int) error {
 		err = rerr
 	}
 	return err
-}
-
-// checkPrefixAncestors refuses a prefix (resolved) with a directory above
-// it that another user could change, by the rule package fetch applies to
-// the directories above the package cache: each existing one must belong to
-// root or the effective user and not be writable by group or others unless
-// its sticky bit is set (as on /tmp), a user private group (gid equal to
-// the uid and the effective gid) counting as the user's. Otherwise whoever
-// can write such a directory could swap the whole prefix, after its
-// interpreter was checked, for a copy holding code of theirs. Missing
-// directories are skipped: InstallLock creates them, mode 0755.
-func checkPrefixAncestors(prefix string) error {
-	euid, egid := os.Geteuid(), os.Getegid()
-	for p := filepath.Dir(prefix); ; p = filepath.Dir(p) {
-		fi, err := os.Lstat(p)
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-		case err != nil:
-			return err
-		case !fi.IsDir():
-			return fmt.Errorf("%w: %s, above the prefix, is not a directory", ErrUnsafePrefix, p)
-		default:
-			st, ok := fi.Sys().(*syscall.Stat_t)
-			if !ok {
-				return fmt.Errorf("%w: %s: no owner information", ErrUnsafePrefix, p)
-			}
-			if st.Uid != 0 && int(st.Uid) != euid {
-				return fmt.Errorf("%w: %s, above the prefix, belongs to uid %d, neither root nor the current user (uid %d)", ErrUnsafePrefix, p, st.Uid, euid)
-			}
-			perm := fi.Mode().Perm()
-			if int(st.Uid) == euid && int(st.Gid) == euid && egid == euid {
-				perm &^= 0o020
-			}
-			if perm&0o022 != 0 && fi.Mode()&fs.ModeSticky == 0 {
-				return fmt.Errorf("%w: %s, above the prefix, is writable by group or others (mode %v) without the sticky bit", ErrUnsafePrefix, p, fi.Mode().Perm())
-			}
-		}
-		if filepath.Dir(p) == p {
-			return nil
-		}
-	}
 }
 
 // setDirMode sets the mode of the open directory d (fchmod), whatever the

@@ -250,7 +250,7 @@ func TestRedirectDropsReferer(t *testing.T) {
 	var referer atomic.Value
 	referer.Store("unset")
 	s.handler = func(w http.ResponseWriter, r *http.Request) bool {
-		if r.URL.Path == "/t/secret-token/"+wheelFn {
+		if r.URL.Path == "/private/secret-path/"+wheelFn {
 			http.Redirect(w, r, "/real/"+wheelFn, http.StatusFound)
 			return true
 		}
@@ -258,11 +258,22 @@ func TestRedirectDropsReferer(t *testing.T) {
 		return false
 	}
 	c := &Cache{Dir: t.TempDir(), Client: s.Client()}
-	if _, err := c.Fetch(context.Background(), s.URL+"/t/secret-token/"+wheelFn, wheelSHA, wheelSize); err != nil {
+	if _, err := c.Fetch(context.Background(), s.URL+"/private/secret-path/"+wheelFn, wheelSHA, wheelSize); err != nil {
 		t.Fatal(err)
 	}
 	if got := referer.Load(); got != "" {
 		t.Fatalf("redirect target received Referer %q", got)
+	}
+	// URLs with credentials (an anaconda.org token segment, user info) are
+	// refused before any request, as everywhere in goomba.
+	hits := s.hits.Load()
+	for _, u := range []string{s.URL + "/t/secret-token/" + wheelFn, strings.Replace(s.URL, "https://", "https://user:pw@", 1) + "/x/" + wheelFn} {
+		if _, err := c.Fetch(context.Background(), u, wheelSHA, wheelSize); !errors.Is(err, ErrInsecureURL) || strings.Contains(err.Error(), "pw") {
+			t.Errorf("%s: %v", u, err)
+		}
+	}
+	if s.hits.Load() != hits {
+		t.Error("a URL with credentials was requested")
 	}
 }
 
@@ -499,4 +510,34 @@ func TestArchiveChangedDuringExtraction(t *testing.T) {
 		t.Fatal("tree published")
 	}
 	assertClean(t, c.Dir)
+}
+
+// TestCacheLeavesUserFiles (WP8b review round 1, B1): a package cache in a
+// directory that holds the user's own files removes none of them; only a
+// non-directory at a content directory's sha256 name is replaced. A file
+// named .locks makes the cache unusable instead of being removed.
+func TestCacheLeavesUserFiles(t *testing.T) {
+	s := newServer(t, false)
+	url := s.put("/noarch/"+wheelFn, wheelBytes(t))
+	c := newCache(t, s)
+	user := map[string]string{"notes": "mine", "index": "mine too", "shards": "and this", "pkg": "x"}
+	for name, data := range user {
+		must(t, os.WriteFile(filepath.Join(c.Dir, name), []byte(data), 0o644))
+	}
+	if _, err := c.Extracted(context.Background(), wheelRecord(url)); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range user {
+		if got, err := os.ReadFile(filepath.Join(c.Dir, name)); err != nil || string(got) != data {
+			t.Errorf("%s: %q, %v", name, got, err)
+		}
+	}
+	c2 := newCache(t, s)
+	must(t, os.WriteFile(filepath.Join(c2.Dir, ".locks"), []byte("mine"), 0o644))
+	if _, err := c2.Extracted(context.Background(), wheelRecord(url)); err == nil {
+		t.Error("a file named .locks was accepted")
+	}
+	if got, err := os.ReadFile(filepath.Join(c2.Dir, ".locks")); err != nil || string(got) != "mine" {
+		t.Errorf(".locks: %q, %v", got, err)
+	}
 }

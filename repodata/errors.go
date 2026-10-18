@@ -3,6 +3,8 @@ package repodata
 import (
 	"errors"
 	"fmt"
+
+	"github.com/richinsley/goomba/internal/netguard"
 )
 
 // ErrNotSharded reports that a channel subdir does not publish a sharded
@@ -20,8 +22,19 @@ var ErrNotCached = errors.New("not in cache (offline)")
 
 // ErrUnsupportedURL reports a URL that goomba refuses to use: anything other
 // than https, except http to a loopback host (127.0.0.1, ::1 or localhost),
-// and URLs carrying a query or fragment where a base URL is expected.
-var ErrUnsupportedURL = errors.New("unsupported URL")
+// URLs carrying a query or fragment where a base URL is expected, and URLs,
+// redirect targets or connection addresses the channel's network policy
+// refuses (see Options.Client). It is the network guard's sentinel, shared
+// with package fetch's policy errors.
+var ErrUnsupportedURL = netguard.ErrUnsupportedURL
+
+// ErrUnsafeCache reports an index cache that another user could change:
+// Options.CacheDir, a directory above it, or a directory or file in it
+// that does not belong to the current user or that group or others may
+// write (checked on Unix; see Options.CacheDir). The index cache supplies
+// the sha256 of every package, so goomba refuses such a cache rather than
+// trust it.
+var ErrUnsafeCache = errors.New("unsafe index cache")
 
 // ErrTooLarge reports a download or decompressed payload above goomba's size
 // limits.
