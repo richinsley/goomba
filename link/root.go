@@ -76,6 +76,21 @@ func splitComponents(p string) []string {
 	return out
 }
 
+// splitResolve splits p into the components resolve walks: like
+// splitComponents, but "." and empty components stay, as ".", so that one
+// after a file ("file/", "file/.") fails as the kernel's ENOTDIR does,
+// rather than resolving to the file.
+func splitResolve(p string) []string {
+	var out []string
+	for c := range strings.SplitSeq(p, "/") {
+		if c == "" {
+			c = "."
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 type resolveMode int
 
 const (
@@ -127,12 +142,17 @@ func (o overlay) put(comps []string, e overlayEntry) { o[strings.Join(comps, "/"
 // to *created in creation order. Entries of ov take precedence over the
 // file system.
 func (r *root) resolve(rel string, mode resolveMode, created *[]string, ov overlay) (string, []string, error) {
-	queue := splitComponents(rel)
+	queue := splitResolve(rel)
 	var stack []string
 	hops := 0
 	for len(queue) > 0 {
 		c := queue[0]
 		queue = queue[1:]
+		if c == "." {
+			// The component before it was checked to be a directory
+			// (this one was still queued), as the kernel requires.
+			continue
+		}
 		if c == ".." {
 			if len(stack) == 0 {
 				return "", nil, fmt.Errorf("%w: %q resolves outside %s", ErrUnsafePath, rel, r.dir)
@@ -209,7 +229,7 @@ func (r *root) resolve(rel string, mode resolveMode, created *[]string, ov overl
 				stack = nil
 				queue = append(comps, queue...)
 			} else {
-				queue = append(splitComponents(target), queue...)
+				queue = append(splitResolve(target), queue...)
 			}
 			continue
 		}

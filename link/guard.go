@@ -74,11 +74,20 @@ func (g *guard) isScriptDir(comps []string) bool {
 	return false
 }
 
-// symlinkTargetShape checks that a symlink target is in normal form:
-// "." or zero or more ".." followed by zero or more names, never "." or ".."
-// after a name, nothing absolute, no empty components or backslashes, and
-// no name that folds to "conda-meta". It returns the number of leading ".."
-// and the names.
+// symlinkTargetShape checks the shape of a symlink target and returns its
+// normalised form: the number of leading ".." components and the names
+// after them. A target must be zero or more ".." followed by zero or more
+// names, once its "." and empty components ("./a", "a//b", "a/", "a/.",
+// ".././../a", as conda-forge's ncurses ships) are dropped: path resolution
+// skips them, or, after a name that is not a directory, fails with ENOTDIR,
+// so they never move a target anywhere. Every check runs on the normalised
+// form; the symlink is still created with the target exactly as written,
+// as micromamba does.
+//
+// Refused: an empty target, a NUL byte or a backslash, an absolute or drive
+// target (also once "." components are dropped, as in "./C:/x"), ".." after
+// a name ("a/../b": a may be or become a symlink, so where it leads cannot
+// be known from the text), and any name that folds to "conda-meta".
 func symlinkTargetShape(target string) (int, []string, error) {
 	bad := func(why string) (int, []string, error) {
 		return 0, nil, fmt.Errorf("%w: symlink target %q %s", ErrUnsafePath, target, why)
@@ -86,27 +95,33 @@ func symlinkTargetShape(target string) (int, []string, error) {
 	switch {
 	case target == "":
 		return bad("is empty")
-	case target == ".":
-		return 0, nil, nil
 	case strings.ContainsAny(target, "\x00\\"):
 		return bad("contains a NUL byte or backslash")
 	case strings.HasPrefix(target, "/") || filepath.IsAbs(target) || hasDriveLetter(target):
 		return bad("is absolute")
 	}
-	parts := strings.Split(target, "/")
 	ups := 0
-	for ups < len(parts) && parts[ups] == ".." {
-		ups++
-	}
-	for _, p := range parts[ups:] {
-		if p == "" || p == "." || p == ".." {
-			return bad("is not in normal form")
+	var names []string
+	for p := range strings.SplitSeq(target, "/") {
+		switch {
+		case p == "" || p == ".":
+			continue
+		case p == "..":
+			if len(names) > 0 {
+				return bad(`has ".." after a name`)
+			}
+			ups++
+		default:
+			// Whether such a component would reach conda-meta depends
+			// on symlinks created later; refuse it whatever the order.
+			if foldName(p) == "conda-meta" {
+				return bad("names conda-meta")
+			}
+			names = append(names, p)
 		}
-		// Whether such a component would reach conda-meta depends on
-		// symlinks created later; refuse it whatever the order.
-		if foldName(p) == "conda-meta" {
-			return bad("names conda-meta")
-		}
 	}
-	return ups, parts[ups:], nil
+	if ups == 0 && len(names) > 0 && hasDriveLetter(names[0]) {
+		return bad("is a drive path once its \".\" components are dropped")
+	}
+	return ups, names, nil
 }

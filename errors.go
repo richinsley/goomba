@@ -7,9 +7,10 @@ import (
 	"github.com/richinsley/goomba/link"
 )
 
-// Sentinel errors returned (wrapped) by InstallLock, Lock and Create. Test
-// for them with errors.Is. Errors from the packages InstallLock builds on (lock, fetch,
-// archive, link, virtual) are wrapped unchanged, so their sentinels work
+// Sentinel errors returned (wrapped) by InstallLock, Lock, Create and
+// CheckComplete. Test for them with errors.Is. Errors from the packages
+// InstallLock builds on (lock, fetch, archive, link, virtual) are wrapped
+// unchanged, so their sentinels work
 // too: lock.ErrInvalid for a lockfile that fails validation, the fetch
 // error types for downloads, link.ErrLinkScript and link.ErrUnsafePath for
 // refused package contents, context.Canceled after cancellation.
@@ -46,6 +47,14 @@ var (
 	// ErrPrefixLocked reports a prefix locked by another installation, in
 	// this process or another.
 	ErrPrefixLocked = errors.New("prefix is locked by another process")
+
+	// ErrIncomplete reports, from CheckComplete, a prefix that holds an
+	// interrupted goomba installation: its conda-meta/.goomba-incomplete
+	// marker is present and no process holds the prefix lock, so the
+	// installation that wrote it ended without finishing or rolling back
+	// (it was killed, or the machine went down). goomba never resumes one:
+	// the prefix must be removed before anything is installed there again.
+	ErrIncomplete = errors.New("prefix holds an interrupted installation")
 
 	// ErrClobber reports two packages of one transaction that install the
 	// same path. The error is a *ClobberError.

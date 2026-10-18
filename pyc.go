@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/richinsley/goomba/internal/rmtree"
 	"github.com/richinsley/goomba/link"
 )
 
@@ -83,7 +84,7 @@ func compilePyc(ctx context.Context, prefix string, py *link.PythonInfo, sources
 	if err != nil {
 		return res, fail(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = rmtree.RemoveAll(dir) }()
 	isolation := []string{"-I", "-S"}
 	if !pythonAtLeast(py.Version, 3, 4) {
 		isolation = []string{"-E", "-s", "-S"}

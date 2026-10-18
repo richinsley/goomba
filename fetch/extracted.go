@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/richinsley/goomba/archive"
+	"github.com/richinsley/goomba/internal/rmtree"
 	"github.com/richinsley/goomba/record"
 )
 
@@ -240,20 +241,13 @@ func removeStaleExtractions(dir string) {
 	}
 }
 
-// forceRemoveAll removes a tree, making its directories writable first if
-// a plain removal fails (a tree may hold read-only directories). Errors
+// forceRemoveAll removes a tree with package internal/rmtree: read-only
+// directories are made writable first, symlinks are never followed, and a
+// mount point inside the tree (a volume mounted into the cache) is neither
+// entered nor chmod-ed, so it and the directories above it stay. Errors
 // are ignored: a leftover is removed by a later stale-entry sweep.
 func forceRemoveAll(p string) {
-	if os.RemoveAll(p) == nil {
-		return
-	}
-	_ = filepath.WalkDir(p, func(q string, d fs.DirEntry, err error) error {
-		if err == nil && d.IsDir() {
-			_ = os.Chmod(q, 0o755)
-		}
-		return nil
-	})
-	_ = os.RemoveAll(p)
+	_ = rmtree.RemoveAll(p)
 }
 
 // markerKey returns the cache's MAC key, creating Dir/.goomba-key with 32

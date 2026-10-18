@@ -83,21 +83,30 @@ func resolveInside(root, rel string) error {
 // resolveIn resolves the slash-separated path rel below root (a directory
 // without symlinks of its own) as resolveInside does, and returns where it
 // ends, slash-separated below root, and whether every component exists.
+// A ".", ".." or empty component after a file ("file/", "file/."), which
+// the kernel refuses with ENOTDIR, makes the path missing, so that such a
+// symlink gets the empty digest, as libmamba records for it.
 func resolveIn(root, rel string) (final string, exists bool, err error) {
 	var cur []string // resolved components below root
 	todo := strings.Split(rel, "/")
-	hops, missing := 0, false
+	hops, missing, file := 0, false, false
 	for len(todo) > 0 {
 		c := todo[0]
 		todo = todo[1:]
 		switch c {
 		case "", ".":
+			if file {
+				missing = true
+			}
 			continue
 		case "..":
 			if len(cur) == 0 {
 				return "", false, fmt.Errorf("%w: resolves outside the prefix", link.ErrUnsafePath)
 			}
-			cur = cur[:len(cur)-1]
+			if file {
+				missing = true // ENOTDIR too
+			}
+			cur, file = cur[:len(cur)-1], false
 			continue
 		}
 		cur = append(cur, c)
@@ -114,6 +123,7 @@ func resolveIn(root, rel string) (final string, exists bool, err error) {
 			return "", false, err
 		}
 		if fi.Mode()&fs.ModeSymlink == 0 {
+			file = !fi.IsDir()
 			continue
 		}
 		if hops++; hops > maxSymlinkHops {

@@ -203,7 +203,8 @@ type Event struct {
 //     track_features and features taken from its own info/index.json
 //     (lockfiles do not carry them), its requested_spec from the last of
 //     lf.Specs naming it; then one conda-meta/history revision with
-//     lf.Specs as "# update specs". Removing .goomba-incomplete completes
+//     lf.Specs as "# update specs". The prefix directory gets its final
+//     mode, and removing .goomba-incomplete, the last change, completes
 //     the transaction.
 //
 // Link order: dependencies link before their dependents. Dependency cycles
@@ -225,7 +226,11 @@ type Event struct {
 //
 // On failure the prefix is emptied through the locked directory handle
 // (openat/unlinkat on Unix), so renaming the prefix or a directory above
-// it cannot redirect the removal to other data.
+// it cannot redirect the removal to other data, never entering a mount
+// point inside it (package internal/rmtree), and in an order that keeps
+// .goomba-incomplete until nothing else is left: a process killed at any
+// moment, while installing or rolling back, leaves a prefix CheckComplete
+// reports as ErrIncomplete (RemoveIncomplete removes it), or nothing.
 //
 // Errors come in this order, so callers that branch on them see the first
 // condition that applies: a nil or invalid lockfile (lock.ErrInvalid); a
@@ -249,7 +254,10 @@ type Event struct {
 //
 // InstallLock is safe for concurrent use with different prefixes; calls
 // for the same prefix exclude each other through the prefix lock (the
-// second fails with ErrPrefixLocked or ErrPrefixNotEmpty).
+// second fails with ErrPrefixLocked or ErrPrefixNotEmpty). A CheckComplete
+// that holds the lock shared when InstallLock takes it delays it for
+// moments (InstallLock tries again for about 50 ms) but does not make it
+// fail.
 func InstallLock(ctx context.Context, prefix string, lf *lock.Lockfile, opt InstallOptions) (err error) {
 	if lf == nil {
 		return fmt.Errorf("goomba: %w: nil lockfile", lock.ErrInvalid)

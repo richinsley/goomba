@@ -262,3 +262,80 @@ func replaceBinaryPrefixLibmamba(data []byte, placeholder, prefix string) []byte
 	}
 	return []byte(buffer)
 }
+
+// normalFormShape is the rule symlinkTargetShape applied before WP8c: "."
+// alone, or leading ".." then names, with no empty, "." or ".."
+// component after them. symlinkTargetShape must accept a target exactly
+// when this accepts its normalised form.
+func normalFormShape(target string) (int, []string, bool) {
+	switch {
+	case target == "" || strings.ContainsAny(target, "\x00\\") || strings.HasPrefix(target, "/") || hasDriveLetter(target):
+		return 0, nil, false
+	case target == ".":
+		return 0, nil, true
+	}
+	parts := strings.Split(target, "/")
+	ups := 0
+	for ups < len(parts) && parts[ups] == ".." {
+		ups++
+	}
+	for _, p := range parts[ups:] {
+		if p == "" || p == "." || p == ".." || foldName(p) == "conda-meta" {
+			return 0, nil, false
+		}
+	}
+	if ups == len(parts) {
+		return ups, nil, true
+	}
+	return ups, parts[ups:], true
+}
+
+// FuzzSymlinkTargetShape checks symlinkTargetShape against its
+// specification: dropping "." and empty components, then the pre-WP8c
+// normal-form rule; and checkSymlinkTarget never lets the normalised target
+// climb above the symlink's directory depth.
+func FuzzSymlinkTargetShape(f *testing.F) {
+	for _, s := range [][2]string{
+		{"share/terminfo/31/1178", ".././61/adm1178"},
+		{"lib/l", "."}, {"lib/l", "./"}, {"l", "x/."}, {"a/b/c", ".././../x"}, {"a/l", ".././../x"},
+		{"a/l", "x//y"}, {"a/l", "..//x"}, {"a/l", "x/../y"}, {"a/l", "./C:/x"}, {"a/l", "./conda-meta"},
+		{"a/l", ""}, {"a/l", "/x"}, {"a/l", `x\y`}, {"a/l", "x\x00"}, {"conda-meta/l", "x"}, {"a/b/l", "../.././../x/"},
+	} {
+		f.Add(s[0], s[1])
+	}
+	f.Fuzz(func(t *testing.T, dst, target string) {
+		ups, names, err := symlinkTargetShape(target)
+		var kept []string
+		for p := range strings.SplitSeq(target, "/") {
+			if p != "" && p != "." {
+				kept = append(kept, p)
+			}
+		}
+		norm := strings.Join(kept, "/")
+		if norm == "" {
+			norm = "."
+		}
+		wantUps, wantNames, ok := normalFormShape(norm)
+		if target == "" || strings.HasPrefix(target, "/") {
+			ok = false
+		}
+		if (err == nil) != ok {
+			t.Fatalf("symlinkTargetShape(%q) = %v; the normal-form rule says %v for %q", target, err, ok, norm)
+		}
+		if err != nil {
+			if !errors.Is(err, ErrUnsafePath) {
+				t.Fatalf("symlinkTargetShape(%q): %v is not ErrUnsafePath", target, err)
+			}
+			return
+		}
+		if ups != wantUps || strings.Join(names, "/") != strings.Join(wantNames, "/") {
+			t.Fatalf("symlinkTargetShape(%q) = %d, %q; want %d, %q", target, ups, names, wantUps, wantNames)
+		}
+		if validRelPath(dst) != nil {
+			return
+		}
+		if checkSymlinkTarget(dst, target) == nil && ups > strings.Count(dst, "/") {
+			t.Fatalf("checkSymlinkTarget(%q, %q) accepted %d levels up", dst, target, ups)
+		}
+	})
+}

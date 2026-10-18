@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/richinsley/goomba/internal/rmtree"
 )
 
 // Default limits applied when a Limits field is zero or negative.
@@ -249,8 +251,8 @@ func extractInto(ctx context.Context, destDir string, lim Limits, fill func(*ext
 		if err != nil {
 			// If tmp was replaced by something else, this removes that
 			// entry (a symlink is removed, not followed), never our tree's
-			// new location.
-			_ = os.RemoveAll(tmp)
+			// new location; a mount point inside it is not entered.
+			_ = rmtree.RemoveAll(tmp)
 		}
 	}()
 	// Pin the directory just created before writing anything: open it

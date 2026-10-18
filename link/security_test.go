@@ -314,8 +314,18 @@ func TestSymlinkEscapes(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	t.Run("normal form", func(t *testing.T) {
-		for _, target := range []string{"./x", "x/", "x//y", "x/.", "..//x", "/abs", `x\y`, "x/../y"} {
+	t.Run("shape", func(t *testing.T) {
+		// "." and empty components are dropped before the checks (WP8c:
+		// conda-forge's ncurses ships ".././61/adm1178"); the target is
+		// written as the package has it.
+		for _, target := range []string{"./x", "x/", "x//y", "x/.", "..//x", ".././x", "./../../x", "../.././x/./"} {
+			e := newSecEnv(t)
+			e.mustLink(pkgSpec{name: "n", files: []pkgFile{{path: "lib/deep/l", symlink: target}}})
+			if got, err := os.Readlink(filepath.Join(e.prefix, "lib/deep/l")); err != nil || got != target {
+				t.Errorf("target %q written as %q, %v", target, got, err)
+			}
+		}
+		for _, target := range []string{"/abs", `x\y`, "x/../y", "x/./../y", "./x/..", ".././../../x", "./conda-meta", "../.././/conda-meta/x"} {
 			e := newSecEnv(t)
 			e.mustFail(pkgSpec{name: "n", files: []pkgFile{{path: "lib/deep/l", symlink: target}}}, ErrUnsafePath)
 		}

@@ -180,9 +180,11 @@ func (u *undo) rollback() {
 // really land (never in conda-meta); link-script names (refused anywhere
 // except an allowed package's own script, as a file directly in bin or
 // Scripts), also for directories created on the way; bin and Scripts
-// themselves (never symlinks); symlink targets (normal form, no component
-// naming conda-meta, never climbing above the prefix from the symlink's
-// physical directory, never leading into conda-meta); entry points; placeholder
+// themselves (never symlinks); symlink targets (after dropping "." and
+// empty components: leading ".." only, no component naming conda-meta,
+// never climbing above the prefix from the symlink's physical directory,
+// never leading into conda-meta; the target is written as the package has
+// it); entry points; placeholder
 // lengths; existing destinations; and, for Windows targets or hosts, names
 // that Win32 would read as another name (trailing dots or spaces, ':' and
 // 8.3 short names of conda-meta or Scripts). Names are compared after
@@ -666,10 +668,10 @@ func fileKind(m fs.FileMode) string {
 }
 
 // checkSymlinkTarget checks a symlink target against the destination as
-// written: the target must be in normal form (see symlinkTargetShape), may
-// not climb above the prefix from the symlink's directory, and may not
-// point into conda-meta. checkResolved repeats the depth check on the
-// symlink's physical directory.
+// written: the target must have the shape symlinkTargetShape accepts, and
+// its normalised form may not climb above the prefix from the symlink's
+// directory, nor point into conda-meta. checkResolved repeats the depth
+// check on the symlink's physical directory.
 func checkSymlinkTarget(dst, target string) error {
 	ups, names, err := symlinkTargetShape(target)
 	if err != nil {

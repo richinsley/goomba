@@ -11,8 +11,13 @@ import (
 	"github.com/richinsley/goomba/internal/safedir"
 )
 
-// incompleteMarker is written into conda-meta first and removed last, so a
-// prefix left behind by a crash is recognisable as incomplete.
+// incompleteMarker is the file conda-meta/.goomba-incomplete. openPrefix
+// creates it right after conda-meta, before anything else is written;
+// commit removes it as the last change to the prefix, while the lock is
+// still held; emptyPrefix makes sure it exists before it removes anything
+// and removes it only once nothing else is left. A prefix that a crash
+// left behind, at any point, is therefore recognisable as incomplete (see
+// prefixState.interrupted).
 const incompleteMarker = ".goomba-incomplete"
 
 // prefixTx is a prefix InstallLock is creating. It holds the prefix lock
@@ -46,13 +51,16 @@ func checkPrefixFree(prefix string) error {
 		return fmt.Errorf("goomba: prefix %s: %w", prefix, ErrPrefixNotEmpty)
 	}
 	f, err := os.Open(prefix)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil // removed meanwhile (a RemoveIncomplete)
+	}
 	if err != nil {
 		return fmt.Errorf("goomba: prefix %s: %w", prefix, err)
 	}
 	defer f.Close()
 	if names, err := f.Readdirnames(1); len(names) > 0 {
 		return fmt.Errorf("goomba: prefix %s: %w", prefix, ErrPrefixNotEmpty)
-	} else if err != nil && err != io.EOF {
+	} else if err != nil && err != io.EOF && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("goomba: prefix %s: %w", prefix, err)
 	}
 	return nil
@@ -92,7 +100,7 @@ func openPrefix(prefix string) (_ *prefixTx, err error) {
 			tx.dir = nil
 		}
 		if tx.created {
-			_ = os.Remove(prefix)
+			_ = rmdir(prefix)
 		}
 		tx.removeParents()
 	}
@@ -166,15 +174,16 @@ func openPrefix(prefix string) (_ *prefixTx, err error) {
 	return tx, nil
 }
 
-// commit removes the incomplete marker, gives the prefix directory its final
-// mode and releases the lock. If either fails the lock is kept, for
-// rollback.
+// commit gives the prefix directory its final mode, removes the incomplete
+// marker and releases the lock. If either fails the lock is kept, for
+// rollback; the marker goes last, so a failure (or a crash) before it
+// leaves the prefix marked.
 func (tx *prefixTx) commit() error {
-	if err := os.Remove(filepath.Join(tx.path, "conda-meta", incompleteMarker)); err != nil {
-		return fmt.Errorf("goomba: prefix %s: remove %s: %w", tx.path, incompleteMarker, err)
-	}
 	if err := setDirMode(tx.dir, tx.mode); err != nil {
 		return fmt.Errorf("goomba: prefix %s: %w", tx.path, err)
+	}
+	if err := os.Remove(filepath.Join(tx.path, "conda-meta", incompleteMarker)); err != nil {
+		return fmt.Errorf("goomba: prefix %s: remove %s: %w", tx.path, incompleteMarker, err)
 	}
 	unlockDir(tx.dir)
 	tx.dir = nil
@@ -186,7 +195,9 @@ func (tx *prefixTx) commit() error {
 // this call created it and it is still at its path, then releases the lock.
 // On Unix the removal works relative to the handle, so a directory renamed
 // or swapped for a symlink meanwhile, above or inside the prefix, cannot
-// redirect it to other data.
+// redirect it to other data. The prefix is emptied in emptyPrefix's order,
+// so a rollback that is itself killed leaves a prefix CheckComplete
+// reports as ErrIncomplete, never files without the marker.
 func (tx *prefixTx) rollback() {
 	defer func() {
 		if tx.dir != nil {
@@ -203,9 +214,9 @@ func (tx *prefixTx) rollback() {
 		}
 	}
 	if tx.created {
-		if st, err := os.Lstat(tx.path); err == nil && os.SameFile(st, tx.id) {
-			_ = os.Remove(tx.path)
-		}
+		// Only if it is still the directory this call made, and with
+		// rmdir semantics: a path swapped meanwhile costs nothing.
+		_ = rmdirSame(tx.path, tx.id)
 		tx.removeParents()
 		return
 	}
@@ -217,7 +228,7 @@ func (tx *prefixTx) rollback() {
 // first, as long as they are empty.
 func (tx *prefixTx) removeParents() {
 	for i := len(tx.parents) - 1; i >= 0; i-- {
-		if os.Remove(tx.parents[i]) != nil {
+		if rmdir(tx.parents[i]) != nil {
 			break
 		}
 	}
