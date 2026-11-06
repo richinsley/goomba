@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/richinsley/goomba/link"
@@ -112,7 +113,18 @@ func TestSymlinkDigestTrailingSlash(t *testing.T) {
 			t.Errorf("%s: sha256_in_prefix %v, want %s", rel, m["sha256_in_prefix"], want[rel])
 		}
 		_, statErr := os.Stat(filepath.Join(prefix, rel))
-		if (statErr == nil) != (want[rel] == file) {
+		dead := want[rel] != file
+		if rel == "share/l5" && runtime.GOOS == "darwin" && statErr == nil {
+			// Older XNU flattens a trailing slash while walking a
+			// symlink's target, so l5 -> "l3/" -> ./f resolves there
+			// where Linux (and newer macOS) return ENOTDIR for the
+			// intermediate slash. goomba records the Linux/libmamba
+			// digest either way — asserted just above — so the kernel's
+			// own verdict on this one link is the only thing that
+			// varies across the platforms goomba ships on; accept it.
+			continue
+		}
+		if (statErr == nil) == dead {
 			t.Errorf("%s: stat %v", rel, statErr)
 		}
 	}
