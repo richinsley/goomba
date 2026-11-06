@@ -1,0 +1,97 @@
+name: ci
+
+# The merge gates (scripts/gate.sh: build, vet, race, gofmt, check-paths,
+# check-doc-examples) plus a vulnerability scan and a short fuzz smoke, on
+# the platforms goomba claims: linux-64, linux-aarch64 and macOS (Apple
+# Silicon and Intel). All tests run offline; the ones needing reference
+# material or the network skip themselves (see AGENTS.md).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  gate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The go.mod floor and the toolchain the project develops on.
+          - os: ubuntu-24.04
+            go: '1.24.0'
+          - os: ubuntu-24.04
+            go: '1.25.7'
+          - os: ubuntu-24.04-arm
+            go: '1.25.7'
+          - os: macos-13
+            go: '1.25.7'
+          - os: macos-14
+            go: '1.25.7'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: true
+      - name: Gate
+        run: scripts/gate.sh ./...
+
+  govulncheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - name: govulncheck
+        run: govulncheck ./...
+
+  # The committed suites already replay every seed corpus under go test; this
+  # smoke adds a short mutation-driven run, one target per hostile-input
+  # package, just long to catch a fresh panic class without dominating CI.
+  # A crash fails the job, and goomba's own rule applies: fix it, then commit
+  # the crasher as a regression seed.
+  fuzz-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.7'
+      - name: Fuzz smoke
+        run: |
+          set -euo pipefail
+          while read -r pkg target; do
+            echo "::group::fuzz ${pkg} ${target}"
+            go test -run='^$' -fuzz="^${target}$" -fuzztime=15s "${pkg}"
+            echo "::endgroup::"
+          done <<'TARGETS'
+          . FuzzPlan
+          ./archive FuzzExtractConda
+          ./cdcl FuzzSolveRandom
+          ./fetch FuzzParseSidecar
+          ./internal/netguard FuzzCheck
+          ./link FuzzParseEntryPoint
+          ./lock FuzzReadLockfile
+          ./repodata FuzzDecodeShard
+          ./solve FuzzSolveSmallChannel
+          ./spec FuzzParseMatchSpec
+          ./virtual FuzzGlibcFromELF
+          TARGETS
