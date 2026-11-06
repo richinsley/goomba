@@ -959,7 +959,7 @@ func (m MatchSpec) CondaBuildForm() string {
 
 // neededQuote returns the quote needed to write v as a bracket value: none
 // for plain values, '"' when v contains a space, '=', or a bracket,
-// parenthesis or comma, and '\'' when v also contains '"'.
+// parenthesis or comma, and '\” when v also contains '"'.
 func neededQuote(v string) string {
 	if strings.ContainsAny(v, " =\"',[]()") {
 		if strings.IndexByte(v, '"') >= 0 {
