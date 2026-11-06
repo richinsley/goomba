@@ -15,6 +15,7 @@
 //	goomba lock --from-prefix PREFIX -o FILE
 //	goomba export --explicit --lock FILE
 //	goomba list -p PREFIX
+//	goomba version
 //
 // create with SPECs (match specs such as python=3.11 or "numpy >=1.26")
 // resolves them against the channels and installs the result into PREFIX,
@@ -134,6 +135,7 @@ const usage = `usage:
   goomba lock --from-prefix PREFIX -o FILE
   goomba export --explicit --lock FILE
   goomba list -p PREFIX
+  goomba version
 `
 
 // defaultChannel is the channel used when no -c is given.
@@ -215,6 +217,9 @@ func (c *cli) run(ctx context.Context, args []string) int {
 		err = c.export(args[1:])
 	case "list":
 		err = c.list(args[1:])
+	case "version", "--version", "-version":
+		fmt.Fprintln(c.stdout, versionLine())
+		return exitOK
 	case "help", "-h", "--help", "-help":
 		fmt.Fprint(c.stdout, usage)
 		return exitOK

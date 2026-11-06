@@ -22,6 +22,20 @@ func must(t testing.TB, err error) {
 	}
 }
 
+// tempRoot returns a private temporary directory whose path holds no
+// symlink. macOS's TMPDIR lives under /var, itself a symlink to
+// /private/var: Resolve and ResolvePath resolve it, so tests that compared
+// against the unresolved spelling t.TempDir() gives would check paths the
+// code never uses, and the extra hop counted against the kernel's symlink
+// budget.
+func tempRoot(t testing.TB) string {
+	t.Helper()
+	dir := t.TempDir()
+	real, err := filepath.EvalSymlinks(dir)
+	must(t, err)
+	return real
+}
+
 // skipIfRoot skips ownership tests when running as root, who owns
 // everything it creates and passes every check by design.
 func skipIfRoot(t *testing.T) {
@@ -144,7 +158,7 @@ func TestPrivateGroup(t *testing.T) {
 // resolved, so the caller can keep using that path after a symlink on the
 // way to it is re-pointed.
 func TestResolveOnce(t *testing.T) {
-	root := t.TempDir()
+	root := tempRoot(t)
 	private := filepath.Join(root, "private")
 	must(t, os.Mkdir(private, 0o755))
 	link := filepath.Join(root, "cache")
@@ -240,7 +254,7 @@ func (f fakeOwner) Sys() any { return f.st }
 // to the current user or root, as the kernel's protected_symlinks does.
 func TestResolveStickySymlink(t *testing.T) {
 	skipIfRoot(t)
-	root := t.TempDir()
+	root := tempRoot(t)
 	target := filepath.Join(root, "target")
 	must(t, os.Mkdir(target, 0o755))
 	sticky := filepath.Join(root, "tmp")
@@ -279,7 +293,7 @@ func TestResolveStickySymlink(t *testing.T) {
 // missing directory inside a symlink's target is ENOENT; Resolve refuses
 // those before creating anything.
 func TestResolveChain(t *testing.T) {
-	root := t.TempDir()
+	root := tempRoot(t)
 	must(t, os.MkdirAll(filepath.Join(root, "a", "b", "c"), 0o755))
 	must(t, os.Mkdir(filepath.Join(root, "a", "d"), 0o755))
 	must(t, os.Symlink("a/b", filepath.Join(root, "l1")))                     // relative
@@ -373,7 +387,7 @@ func TestResolveRefusedCreatesNothing(t *testing.T) {
 // file is ENOTDIR, as for the kernel; after a directory or a missing
 // component it is fine.
 func TestResolveTrailingSlash(t *testing.T) {
-	root := t.TempDir()
+	root := tempRoot(t)
 	f := filepath.Join(root, "file")
 	must(t, os.WriteFile(f, nil, 0o600))
 	must(t, os.Symlink("file", filepath.Join(root, "lf")))
@@ -394,7 +408,7 @@ func TestResolveTrailingSlash(t *testing.T) {
 // TestResolveLoop: a symlink loop, and a chain longer than 40 links, are
 // errors (ELOOP), not hangs.
 func TestResolveLoop(t *testing.T) {
-	root := t.TempDir()
+	root := tempRoot(t)
 	must(t, os.Symlink("b", filepath.Join(root, "a")))
 	must(t, os.Symlink("a", filepath.Join(root, "b")))
 	for _, f := range []func(string) (string, error){Resolve, ResolvePath} {

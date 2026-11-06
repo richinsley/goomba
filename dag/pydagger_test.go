@@ -278,21 +278,24 @@ func linearChainABCD() *Graph[string] {
 	return graphOf([]string{"A", "B", "C", "D"}, [2]string{"A", "B"}, [2]string{"B", "C"}, [2]string{"C", "D"})
 }
 
-//	  A
-//	 / \
-//	B   C
-//	 \ /
-//	  D
+//	 A
+//	/ \
+//
+// B   C
+//
+//	\ /
+//	 D
 func diamondABCD() *Graph[string] {
 	return graphOf([]string{"A", "B", "C", "D"},
 		[2]string{"A", "B"}, [2]string{"A", "C"}, [2]string{"B", "D"}, [2]string{"C", "D"})
 }
 
-//	A   B   C
-//	 \  |  /
-//	    D
-//	    |
-//	    E
+// A   B   C
+//
+//	\  |  /
+//	   D
+//	   |
+//	   E
 func wideConvergence() *Graph[string] {
 	return graphOf([]string{"A", "B", "C", "D", "E"},
 		[2]string{"A", "D"}, [2]string{"B", "D"}, [2]string{"C", "D"}, [2]string{"D", "E"})
@@ -308,13 +311,15 @@ func disconnectedSubgraphs() *Graph[string] {
 	return graphOf([]string{"A", "B", "C", "D"}, [2]string{"A", "B"}, [2]string{"C", "D"})
 }
 
-//	  A
-//	 / \
-//	B   C
-//	|   |
-//	D   E
-//	 \ /
-//	  F
+//	 A
+//	/ \
+//
+// B   C
+// |   |
+// D   E
+//
+//	\ /
+//	 F
 func deepDiamond() *Graph[string] {
 	return graphOf([]string{"A", "B", "C", "D", "E", "F"},
 		[2]string{"A", "B"}, [2]string{"A", "C"}, [2]string{"B", "D"},

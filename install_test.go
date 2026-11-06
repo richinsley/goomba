@@ -78,7 +78,7 @@ func TestInstallLock(t *testing.T) {
 		events = append(events, e)
 		mu.Unlock()
 	}
-	prefix := filepath.Join(t.TempDir(), "envs", "test")
+	prefix := filepath.Join(tempDir(t), "envs", "test")
 	if err := InstallLock(context.Background(), prefix, lf, opt); err != nil {
 		t.Fatal(err)
 	}

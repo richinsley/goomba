@@ -333,7 +333,7 @@ func TestExtractedConcurrent(t *testing.T) {
 	s := newServer(t, false)
 	s.delay = 50 * time.Millisecond
 	url := s.put("/noarch/"+wheelFn, wheelBytes(t))
-	dir := t.TempDir()
+	dir := tempDir(t)
 	caches := []*Cache{{Dir: dir, Client: s.Client(), AllowHTTP: true}, {Dir: dir, Client: s.Client(), AllowHTTP: true}, {Dir: dir, Client: s.Client(), AllowHTTP: true}}
 	var wg sync.WaitGroup
 	errs := make(chan error, 21)

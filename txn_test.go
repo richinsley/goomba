@@ -257,7 +257,7 @@ func TestInstallPrefixStates(t *testing.T) {
 		}
 	})
 	t.Run("relative prefix", func(t *testing.T) {
-		dir := t.TempDir()
+		dir := tempDir(t)
 		t.Chdir(dir)
 		must(t, InstallLock(context.Background(), "rel-env", good, c.options(t)))
 		hist, err := os.ReadFile(filepath.Join(dir, "rel-env", "conda-meta", "history"))

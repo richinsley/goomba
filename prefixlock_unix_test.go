@@ -73,7 +73,7 @@ func TestLockDirWaitsForChecks(t *testing.T) {
 	t.Run("takeovers against checks", func(t *testing.T) {
 		// The reviewer's loop: InstallLock taking over a reused empty
 		// directory again and again while a check runs without pause.
-		prefix := filepath.Join(t.TempDir(), "env")
+		prefix := filepath.Join(tempDir(t), "env")
 		must(t, os.Mkdir(prefix, 0o700))
 		var stop atomic.Bool
 		var wg sync.WaitGroup
@@ -116,7 +116,7 @@ func openUnlocked(t *testing.T, prefix string) *os.File {
 // marker last, so a commit that fails earlier (here setDirMode, on a
 // closed handle) leaves the prefix marked for the rollback.
 func TestCommitKeepsMarkerOnFailure(t *testing.T) {
-	prefix := filepath.Join(t.TempDir(), "env")
+	prefix := filepath.Join(tempDir(t), "env")
 	tx, err := openPrefix(prefix)
 	must(t, err)
 	must(t, tx.dir.Close())

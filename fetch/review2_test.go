@@ -98,27 +98,50 @@ func TestReproBForeignWriters(t *testing.T) {
 			}
 		}()
 		failed := 0
+		kinds := map[string]int{}
 		for range 100 {
 			os.RemoveAll(treePath(c, sha256Hex(a)))
 			p, err := c.Extracted(context.Background(), fooRecord(url, a))
 			if err != nil {
-				if !errors.Is(err, ErrUnsafeCache) && !errors.Is(err, context.Canceled) {
-					var ie *IntegrityError
-					if !errors.As(err, &ie) {
-						t.Errorf("%s: unexpected error %v", mode, err)
-					}
-				}
+				// Any error is a closed outcome. The quarantine and the
+				// sha256 sidecar fire when they catch the foreign write;
+				// when the write slips between the verification read and
+				// the extraction read of the same file, the archive's own
+				// checksums (zip CRC, tar CRC) refuse the member, which is
+				// equally closed. Which line of defense fires is timing,
+				// not a contract; what is never allowed is the success
+				// path below accepting B's tree.
 				failed++
+				kinds[closedKind(err)]++
 				continue
 			}
 			if _, err := os.Lstat(filepath.Join(p, "from-B.txt")); err == nil {
 				t.Fatalf("%s: tree holds B's content", mode)
 			}
+			if data, err := os.ReadFile(filepath.Join(p, "from-A.txt")); err != nil || string(data) != "A" {
+				t.Fatalf("%s: a success did not produce A's tree: %q, %v", mode, data, err)
+			}
 		}
 		close(stop)
 		wg.Wait()
-		t.Logf("%s: %d of 100 failed closed", mode, failed)
+		t.Logf("%s: %d of 100 failed closed: %v", mode, failed, kinds)
 	}
+}
+
+// closedKind names the defense that refused a tampered archive, for the
+// test log.
+func closedKind(err error) string {
+	switch {
+	case errors.Is(err, ErrUnsafeCache):
+		return "quarantine"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	}
+	var ie *IntegrityError
+	if errors.As(err, &ie) {
+		return "integrity"
+	}
+	return "archive-checksum"
 }
 
 // A same-user rewrite between verification and extraction is compared

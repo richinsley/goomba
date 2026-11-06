@@ -94,7 +94,20 @@ func (s *testServer) put(path string, b []byte) string {
 // s and retries almost immediately.
 func newCache(t testing.TB, s *testServer) *Cache {
 	t.Helper()
-	return &Cache{Dir: t.TempDir(), Client: s.Client(), AllowHTTP: true, backoff0: int64(time.Millisecond)}
+	return &Cache{Dir: tempDir(t), Client: s.Client(), AllowHTTP: true, backoff0: int64(time.Millisecond)}
+}
+
+// tempDir returns a private temporary directory whose path holds no
+// symlink. macOS's TMPDIR lives under /var, itself a symlink to
+// /private/var, and a Cache resolves its Dir once, up front: tests that
+// compared against the unresolved spelling t.TempDir() gives would check
+// paths the code never uses.
+func tempDir(t testing.TB) string {
+	t.Helper()
+	dir := t.TempDir()
+	real, err := filepath.EvalSymlinks(dir)
+	must(t, err)
+	return real
 }
 
 // archivePath and treePath are where a cache keeps an archive and its
@@ -424,7 +437,7 @@ func TestFetchConcurrentOneDownload(t *testing.T) {
 	s := newServer(t, false)
 	s.delay = 100 * time.Millisecond
 	url := s.put("/x/"+wheelFn, wheelBytes(t))
-	dir := t.TempDir()
+	dir := tempDir(t)
 	// Four Cache values on one directory stand in for four processes: they
 	// share no in-process lock, only the lock files.
 	caches := make([]*Cache, 4)
