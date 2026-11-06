@@ -2,9 +2,8 @@ name: ci
 
 # The merge gates (scripts/gate.sh: build, vet, race, gofmt, check-paths,
 # check-doc-examples) plus a vulnerability scan and a short fuzz smoke, on
-# the platforms goomba claims: linux-64, linux-aarch64 and macOS (Apple
-# Silicon and Intel). All tests run offline; the ones needing reference
-# material or the network skip themselves (see AGENTS.md).
+# linux-64, linux-aarch64 and macOS. All tests run offline; the ones
+# needing reference material or the network skip themselves (see AGENTS.md).
 
 on:
   push:
@@ -34,9 +33,7 @@ jobs:
             go: '1.25.7'
           - os: ubuntu-24.04-arm
             go: '1.25.7'
-          - os: macos-13
-            go: '1.25.7'
-          - os: macos-14
+          - os: macos-15
             go: '1.25.7'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -58,7 +55,9 @@ jobs:
         with:
           go-version: '1.25.7'
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+        # v1.8.0+ needs Go 1.26; keep the toolchain the scan analyzes with
+        # equal to the pinned one (v1.9.0 fails go install under local).
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
       - name: govulncheck
         run: govulncheck ./...
 
