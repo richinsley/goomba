@@ -27,6 +27,7 @@ goomba lock [-c CHANNEL]... [--platform P] [--offline] [--repodata-dir DIR]
 goomba lock --from-prefix PREFIX -o FILE
 goomba export --explicit --lock FILE
 goomba list -p PREFIX
+goomba version
 ```
 
 - **Flag order.** Flags and SPECs may come in any order, and `--` ends the

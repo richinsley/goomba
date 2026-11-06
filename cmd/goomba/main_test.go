@@ -54,6 +54,8 @@ func TestUsage(t *testing.T) {
 		{[]string{"list", "-p"}, exitUsage},
 		{[]string{"help"}, exitOK},
 		{[]string{"--help"}, exitOK},
+		{[]string{"version"}, exitOK},
+		{[]string{"--version"}, exitOK},
 		{[]string{"create", "-h"}, exitOK},
 		{[]string{"create", "--lock", "/nonexistent/lock.json", "-p", "y", "--pkgs-dir", "z"}, exitFailure},
 		{[]string{"export", "--explicit", "--lock", "/nonexistent/lock.json"}, exitFailure},
