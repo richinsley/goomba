@@ -56,7 +56,7 @@ func checkUnchanged(t *testing.T, prefix string) error {
 // optionally some installed files.
 func incompletePrefix(t *testing.T) string {
 	t.Helper()
-	prefix := filepath.Join(t.TempDir(), "env")
+	prefix := filepath.Join(tempDir(t), "env")
 	must(t, os.Mkdir(prefix, 0o700))
 	must(t, os.MkdirAll(filepath.Join(prefix, "conda-meta"), 0o755))
 	must(t, os.WriteFile(filepath.Join(prefix, "conda-meta", incompleteMarker), []byte("goomba is creating this environment\n"), 0o644))

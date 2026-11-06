@@ -315,7 +315,7 @@ func (c *channel) lockfile(t testing.TB, specs []string, pkgs ...testPkg) *lock.
 // options returns InstallOptions for the channel with a fresh package cache.
 func (c *channel) options(t testing.TB) InstallOptions {
 	return InstallOptions{
-		PkgsDir:     filepath.Join(t.TempDir(), "pkgs"),
+		PkgsDir:     filepath.Join(tempDir(t), "pkgs"),
 		Client:      c.srv.Client(),
 		Concurrency: 4,
 		CompilePyc:  true,
@@ -355,8 +355,21 @@ func fakePython(t testing.TB, logDir string, exitCode int, depends ...string) te
 func must(t testing.TB, err error) {
 	t.Helper()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("%v", err)
 	}
+}
+
+// tempDir returns a private temporary directory whose path holds no
+// symlink. macOS's TMPDIR lives under /var, itself a symlink to
+// /private/var, and goomba resolves every path it installs to: tests that
+// compared against the unresolved spelling t.TempDir() gives would check
+// paths the code never uses.
+func tempDir(t testing.TB) string {
+	t.Helper()
+	dir := t.TempDir()
+	real, err := filepath.EvalSymlinks(dir)
+	must(t, err)
+	return real
 }
 
 func mustJSON(t testing.TB, v any) []byte {

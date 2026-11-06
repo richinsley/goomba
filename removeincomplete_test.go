@@ -53,7 +53,7 @@ func TestRemoveIncomplete(t *testing.T) {
 		}
 	})
 	t.Run("only an empty conda-meta", func(t *testing.T) {
-		prefix := filepath.Join(t.TempDir(), "env")
+		prefix := filepath.Join(tempDir(t), "env")
 		must(t, os.MkdirAll(filepath.Join(prefix, "conda-meta"), 0o755))
 		must(t, RemoveIncomplete(prefix))
 		if _, err := os.Lstat(prefix); !errors.Is(err, fs.ErrNotExist) {

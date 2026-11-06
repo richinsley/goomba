@@ -142,7 +142,7 @@ func TestPrefixAncestors(t *testing.T) {
 func TestPrefixViaForeignSymlink(t *testing.T) {
 	c := newChannel(t)
 	lf := c.lockfile(t, nil, cancelEnv(t, fakePython(t, t.TempDir(), 0))...)
-	root := t.TempDir()
+	root := tempDir(t)
 	real := filepath.Join(root, "real")
 	must(t, os.Mkdir(real, 0o755))
 	other := filepath.Join(root, "other")

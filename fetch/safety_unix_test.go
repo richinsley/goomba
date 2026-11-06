@@ -172,7 +172,7 @@ func TestCachePrivateGroup(t *testing.T) {
 func TestCacheResolvedOnce(t *testing.T) {
 	s := newServer(t, false)
 	url := s.put("/noarch/"+wheelFn, wheelBytes(t))
-	root := t.TempDir()
+	root := tempDir(t)
 	private := filepath.Join(root, "private")
 	must(t, os.Mkdir(private, 0o755))
 	if os.Geteuid() != 0 {
